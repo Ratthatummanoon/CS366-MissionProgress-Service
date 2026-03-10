@@ -94,7 +94,7 @@ GET /incidents/{incident_id}
 
 | พารามิเตอร์   | ประเภท | จำเป็น | คำอธิบาย                     |
 | ------------- | ------ | ------ | ---------------------------- |
-| `incident_id` | String | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
+| `incident_id` | UUID   | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
 
 **Headers:** ดูหัวข้อ [2. Authentication](#2-authentication-จำเป็นสำหรับทุก-request)
 
@@ -147,32 +147,32 @@ GET /incidents/{incident_id}
 
 ### คำอธิบายฟิลด์ Response
 
-| ฟิลด์                 | ประเภท           | คำอธิบาย                                                                          |
-| --------------------- | ---------------- | --------------------------------------------------------------------------------- |
-| `incident_id`         | String           | รหัสเหตุการณ์                                                                     |
-| `mission_id`          | String           | รหัสภารกิจ                                                                        |
-| `rescue_team_id`      | String           | รหัสทีมกู้ภัยที่รับผิดชอบ                                                         |
-| `current_status`      | String           | สถานะปัจจุบันของภารกิจ                                                            |
-| `latest_impact_level` | Integer          | ระดับความรุนแรงล่าสุดที่ประเมิน (1–4)                                             |
-| `started_at`          | String (ISO8601) | เวลาที่เริ่มรับภารกิจ                                                             |
-| `last_updated_at`     | String (ISO8601) | เวลาอัปเดตล่าสุด                                                                  |
-| `description`         | String           | คำอธิบายเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_              |
-| `location`            | String           | พิกัดเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                 |
-| `incident_type`       | String           | ประเภทเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                |
-| `timeline`            | Array            | รายการ Timeline การปฏิบัติงาน (เรียงตามเวลา)                                      |
-| `data_source`         | String           | `"full"` = ข้อมูลครบ, `"partial"` = Degraded Mode (ขาดข้อมูลจาก IncidentTracking) |
+| ฟิลด์                 | ประเภท   | คำอธิบาย                                                                          |
+| --------------------- | -------- | --------------------------------------------------------------------------------- |
+| `incident_id`         | UUID     | รหัสเหตุการณ์                                                                     |
+| `mission_id`          | UUID     | รหัสภารกิจ                                                                        |
+| `rescue_team_id`      | String   | รหัสทีมกู้ภัยที่รับผิดชอบ                                                         |
+| `current_status`      | String   | สถานะปัจจุบันของภารกิจ                                                            |
+| `latest_impact_level` | Integer  | ระดับความรุนแรงล่าสุดที่ประเมิน (1–4)                                             |
+| `started_at`          | DateTime | เวลาที่เริ่มรับภารกิจ                                                             |
+| `last_updated_at`     | DateTime | เวลาอัปเดตล่าสุด                                                                  |
+| `description`         | String   | คำอธิบายเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_              |
+| `location`            | String   | พิกัดเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                 |
+| `incident_type`       | String   | ประเภทเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                |
+| `timeline`            | Array    | รายการ Timeline การปฏิบัติงาน (เรียงตามเวลา)                                      |
+| `data_source`         | String   | `"full"` = ข้อมูลครบ, `"partial"` = Degraded Mode (ขาดข้อมูลจาก IncidentTracking) |
 
 **ฟิลด์ใน Timeline Entry:**
 
-| ฟิลด์          | ประเภท           | คำอธิบาย                                   |
-| -------------- | ---------------- | ------------------------------------------ |
-| `mission_id`   | String           | รหัสภารกิจ                                 |
-| `timestamp`    | String (ISO8601) | เวลาที่เกิดเหตุการณ์                       |
-| `log_id`       | String           | รหัส Log                                   |
-| `action_type`  | String           | ประเภทการกระทำ เช่น `STATUS_CHANGE`        |
-| `description`  | String           | รายละเอียดการปฏิบัติงาน                    |
-| `performed_by` | String           | ผู้ดำเนินการ (รหัสทีม หรือ `SYSTEM`)       |
-| `gps_location` | String           | พิกัด GPS _(ไม่บังคับ — อาจไม่มีฟิลด์นี้)_ |
+| ฟิลด์          | ประเภท   | คำอธิบาย                                   |
+| -------------- | -------- | ------------------------------------------ |
+| `mission_id`   | UUID     | รหัสภารกิจ                                 |
+| `timestamp`    | DateTime | เวลาที่เกิดเหตุการณ์                       |
+| `log_id`       | UUID     | รหัส Log                                   |
+| `action_type`  | String   | ประเภทการกระทำ เช่น `STATUS_CHANGE`        |
+| `description`  | String   | รายละเอียดการปฏิบัติงาน                    |
+| `performed_by` | String   | ผู้ดำเนินการ (รหัสทีม หรือ `SYSTEM`)       |
+| `gps_location` | String   | พิกัด GPS _(ไม่บังคับ — อาจไม่มีฟิลด์นี้)_ |
 
 ### Response — Error (404 Not Found)
 
@@ -233,7 +233,7 @@ POST /incidents/{incident_id}/progress
 
 | พารามิเตอร์   | ประเภท | จำเป็น | คำอธิบาย                     |
 | ------------- | ------ | ------ | ---------------------------- |
-| `incident_id` | String | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
+| `incident_id` | UUID   | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
 
 **Headers:** ดูหัวข้อ [2. Authentication](#2-authentication-จำเป็นสำหรับทุก-request)
 
@@ -292,14 +292,14 @@ DISPATCHED → EN_ROUTE → ON_SITE → RESOLVED
 }
 ```
 
-| ฟิลด์         | ประเภท           | คำอธิบาย            |
-| ------------- | ---------------- | ------------------- |
-| `message`     | String           | ข้อความยืนยันสำเร็จ |
-| `mission_id`  | String           | รหัสภารกิจที่อัปเดต |
-| `incident_id` | String           | รหัสเหตุการณ์       |
-| `old_status`  | String           | สถานะเดิมก่อนอัปเดต |
-| `new_status`  | String           | สถานะใหม่หลังอัปเดต |
-| `updated_at`  | String (ISO8601) | เวลาที่อัปเดตสำเร็จ |
+| ฟิลด์         | ประเภท   | คำอธิบาย            |
+| ------------- | -------- | ------------------- |
+| `message`     | String   | ข้อความยืนยันสำเร็จ |
+| `mission_id`  | UUID     | รหัสภารกิจที่อัปเดต |
+| `incident_id` | UUID     | รหัสเหตุการณ์       |
+| `old_status`  | String   | สถานะเดิมก่อนอัปเดต |
+| `new_status`  | String   | สถานะใหม่หลังอัปเดต |
+| `updated_at`  | DateTime | เวลาที่อัปเดตสำเร็จ |
 
 ### Response — Error (400 Bad Request): Invalid State Transition
 
@@ -424,15 +424,15 @@ curl -X POST \
 }
 ```
 
-| ฟิลด์            | ประเภท           | คำอธิบาย                           |
-| ---------------- | ---------------- | ---------------------------------- |
-| `mission_id`     | String           | รหัสภารกิจ                         |
-| `incident_id`    | String           | รหัสเหตุการณ์                      |
-| `rescue_team_id` | String           | รหัสทีมกู้ภัย                      |
-| `old_status`     | String           | สถานะก่อนเปลี่ยน                   |
-| `new_status`     | String           | สถานะใหม่                          |
-| `changed_at`     | String (ISO8601) | เวลาที่เปลี่ยนสถานะ                |
-| `changed_by`     | String           | ผู้ดำเนินการเปลี่ยนสถานะ (รหัสทีม) |
+| ฟิลด์            | ประเภท   | คำอธิบาย                           |
+| ---------------- | -------- | ---------------------------------- |
+| `mission_id`     | UUID     | รหัสภารกิจ                         |
+| `incident_id`    | UUID     | รหัสเหตุการณ์                      |
+| `rescue_team_id` | String   | รหัสทีมกู้ภัย                      |
+| `old_status`     | String   | สถานะก่อนเปลี่ยน                   |
+| `new_status`     | String   | สถานะใหม่                          |
+| `changed_at`     | DateTime | เวลาที่เปลี่ยนสถานะ                |
+| `changed_by`     | String   | ผู้ดำเนินการเปลี่ยนสถานะ (รหัสทีม) |
 
 **ตัวอย่าง EventBridge Envelope ที่จะปรากฏใน CloudWatch Logs:**
 
@@ -473,14 +473,14 @@ curl -X POST \
 }
 ```
 
-| ฟิลด์            | ประเภท           | คำอธิบาย                                   |
-| ---------------- | ---------------- | ------------------------------------------ |
-| `mission_id`     | String           | รหัสภารกิจ                                 |
-| `incident_id`    | String           | รหัสเหตุการณ์                              |
-| `rescue_team_id` | String           | รหัสทีมกู้ภัยที่ขอกำลังเสริม               |
-| `requested_at`   | String (ISO8601) | เวลาที่ขอ backup                           |
-| `requested_by`   | String           | ผู้ร้องขอ (รหัสทีม)                        |
-| `location`       | String           | พิกัด GPS _(ไม่บังคับ — อาจไม่มีฟิลด์นี้)_ |
+| ฟิลด์            | ประเภท   | คำอธิบาย                                   |
+| ---------------- | -------- | ------------------------------------------ |
+| `mission_id`     | UUID     | รหัสภารกิจ                                 |
+| `incident_id`    | UUID     | รหัสเหตุการณ์                              |
+| `rescue_team_id` | String   | รหัสทีมกู้ภัยที่ขอกำลังเสริม               |
+| `requested_at`   | DateTime | เวลาที่ขอ backup                           |
+| `requested_by`   | String   | ผู้ร้องขอ (รหัสทีม)                        |
+| `location`       | String   | พิกัด GPS _(ไม่บังคับ — อาจไม่มีฟิลด์นี้)_ |
 
 > **สำหรับ Rescue Prioritization Service:** event นี้มีไว้เพื่อแจ้งว่าทีมกู้ภัยหน้างานต้องการกำลังเสริม สามารถนำไปคำนวณ Priority Score ใหม่ได้
 
@@ -506,15 +506,15 @@ curl -X POST \
 }
 ```
 
-| ฟิลด์            | ประเภท           | คำอธิบาย                              |
-| ---------------- | ---------------- | ------------------------------------- |
-| `mission_id`     | String           | รหัสภารกิจ                            |
-| `incident_id`    | String           | รหัสเหตุการณ์                         |
-| `rescue_team_id` | String           | รหัสทีมกู้ภัยที่ประเมินความรุนแรงใหม่ |
-| `old_level`      | Integer          | ระดับความรุนแรงเดิม                   |
-| `new_level`      | Integer          | ระดับความรุนแรงใหม่ (1–4)             |
-| `updated_at`     | String (ISO8601) | เวลาที่อัปเดต                         |
-| `updated_by`     | String           | ผู้ดำเนินการ (รหัสทีม)                |
+| ฟิลด์            | ประเภท   | คำอธิบาย                              |
+| ---------------- | -------- | ------------------------------------- |
+| `mission_id`     | UUID     | รหัสภารกิจ                            |
+| `incident_id`    | UUID     | รหัสเหตุการณ์                         |
+| `rescue_team_id` | String   | รหัสทีมกู้ภัยที่ประเมินความรุนแรงใหม่ |
+| `old_level`      | Integer  | ระดับความรุนแรงเดิม                   |
+| `new_level`      | Integer  | ระดับความรุนแรงใหม่ (1–4)             |
+| `updated_at`     | DateTime | เวลาที่อัปเดต                         |
+| `updated_by`     | String   | ผู้ดำเนินการ (รหัสทีม)                |
 
 > **สำหรับ Rescue Prioritization Service / IncidentTracking Service:** event นี้แจ้งว่าระดับความรุนแรงของเหตุการณ์ถูกปรับโดยทีมหน้างาน สามารถนำ `new_level` ไปอัปเดตฐานข้อมูลหรือคำนวณลำดับความสำคัญใหม่ได้
 
