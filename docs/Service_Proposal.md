@@ -303,6 +303,7 @@ Asynchronous Function Contract
 
   Message Body
 
+```
   {
 
   "incident_id": "INC-12345",
@@ -324,6 +325,7 @@ Asynchronous Function Contract
   }
 
   }
+```
 
 Field Definition:
 
@@ -351,6 +353,7 @@ Response
 
 Success Message Body
 
+```
 {
 
     "status": "SUCCESS",
@@ -360,9 +363,11 @@ Success Message Body
     "processed\_at": "2024-10-15T12:30:06Z"
 
 }
+```
 
 Reject/Error Message Body
 
+```
 {
 
     "status": "FAILED",
@@ -372,6 +377,7 @@ Reject/Error Message Body
     "message": "Missing required field: rescue\_team\_id"
 
 }
+```
 
 Field Definition:
 
@@ -387,8 +393,6 @@ Field Definition:
 - current_status: ต้องเป็นค่าที่กำหนดไว้ใน State Machine เท่านั้น (DISPATCHED, EN_ROUTE, ON-SITE, NEED_BACKUP, RESOLVED)
 - rescue_team_id: ห้ามเป็นค่าว่าง (Null/Empty) ต้องระบุตัวตนทีมกู้ภัยเสมอ
 - changed_at: ต้องเป็นรูปแบบ Timestamp (ISO 8601\) และห้ามเป็นเวลาในอนาคต
-
-# Service Data
 
 # Service Data
 
