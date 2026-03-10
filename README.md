@@ -224,6 +224,21 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 - Go 1.21+ (สำหรับ build)
 - AWS CLI (สำหรับ seed data)
 
+### เตรียม AWS Credentials
+
+ตั้งค่า AWS credentials (ผ่าน environment variables หรือ AWS CLI config) ให้สามารถ deploy resources ใน AWS Learner Lab ได้
+
+```
+aws configure
+```
+
+จะแสดงผลให้คุณกรอก Access Key ID, Secret Access Key, region (เช่น us-east-1) และ output format (เช่น json)
+คุณสามารถยืนยันว่า credentials ถูกตั้งค่าเรียบร้อยแล้วได้ผ่านการ run
+
+```
+aws sts get-caller-identity
+```
+
 ### 1. Build
 
 ```bash
