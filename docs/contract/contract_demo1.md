@@ -26,6 +26,7 @@ MissionProgress Service พึ่งพา **IncidentTracking Service** ขอ�
 | รายการ            | รายละเอียด                                                      |
 | ----------------- | --------------------------------------------------------------- |
 | ชื่อบริการ        | **IncidentTracking Service**                                    |
+| เจ้าของบริการ     | **Krittamet Damthongkam**                                       |
 | ใช้ใน Endpoint    | `GET /incidents/{incident_id}`                                  |
 | วิธีเรียก         | HTTP GET ไปยัง `{INCIDENT_SERVICE_URL}/incidents/{incident_id}` |
 | Timeout           | 3 วินาที                                                        |
