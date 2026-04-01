@@ -1,6 +1,49 @@
+# ✅ 02-Sync-Contract.md (ฉบับแก้ไขแล้ว)
+
+```markdown
 # **Synchronous Function Contract**
 
 > **Base URL:** `https://api.disaster-management.net/mission-progress/v1`
+
+---
+
+## Response Header Convention (ใช้กับทุก API)
+
+ทุก Response จาก MissionProgress Service จะมี Header ดังนี้:
+
+| Header                          | คำอธิบาย                                                                 |
+| :------------------------------ | :----------------------------------------------------------------------- |
+| `Content-Type`                  | `application/json`                                                       |
+| `X-Trace-Id`                    | Unique Trace ID (UUID v4) สำหรับติดตาม request — ใช้อ้างอิงเมื่อแจ้งปัญหา |
+| `Access-Control-Allow-Origin`   | `*`                                                                      |
+| `Access-Control-Allow-Methods`  | `GET,POST,OPTIONS`                                                       |
+| `Access-Control-Allow-Headers`  | `x-api-key,X-Rescue-Team-ID,Content-Type`                               |
+
+> ⚠️ **ยกเว้น** `403 Forbidden` ที่ return จาก API Gateway Authorizer โดยตรง — จะไม่มี `X-Trace-Id` เนื่องจากไม่ผ่าน application layer
+
+---
+
+## Error Response Convention (ใช้กับทุก API)
+
+ทุก Error Response (ยกเว้น 403) จะมีโครงสร้างเดียวกัน:
+
+```json
+{
+  "error": "ERROR_CODE",
+  "code": "ERROR_CODE",
+  "message": "Human-readable error description",
+  "traceId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+| Field     | Type   | คำอธิบาย                                                  |
+| :-------- | :----- | :-------------------------------------------------------- |
+| `error`   | String | Error code สำหรับ programmatic handling                   |
+| `code`    | String | Error code (เหมือน `error`)                               |
+| `message` | String | ข้อความอธิบายปัญหาที่อ่านเข้าใจง่าย                       |
+| `traceId` | String | Trace ID ตัวเดียวกับ `X-Trace-Id` ใน header — ใช้แจ้ง debug |
+
+---
 
 ---
 
@@ -60,6 +103,15 @@
 
 ### Success `200 OK`
 
+**Response Headers:**
+
+```
+Content-Type: application/json
+X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Response Body:**
+
 ```json
 {
   "message": "Progress reported successfully",
@@ -77,7 +129,8 @@
 {
   "error": "INVALID_STATE_TRANSITION",
   "code": "INVALID_STATE_TRANSITION",
-  "message": "Cannot transition from EN_ROUTE to RESOLVED"
+  "message": "Cannot transition from EN_ROUTE to RESOLVED",
+  "traceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
@@ -87,7 +140,8 @@
 {
   "error": "MISSING_PARAMETER",
   "code": "MISSING_PARAMETER",
-  "message": "new_status is required"
+  "message": "new_status is required",
+  "traceId": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 }
 ```
 
@@ -97,7 +151,8 @@
 {
   "error": "INVALID_STATUS",
   "code": "INVALID_STATUS",
-  "message": "Invalid status value: UNKNOWN_STATUS"
+  "message": "Invalid status value: UNKNOWN_STATUS",
+  "traceId": "c3d4e5f6-a7b8-9012-cdef-123456789012"
 }
 ```
 
@@ -107,7 +162,8 @@
 {
   "error": "INVALID_BODY",
   "code": "INVALID_BODY",
-  "message": "Invalid request body"
+  "message": "Invalid request body",
+  "traceId": "d4e5f6a7-b8c9-0123-defa-234567890123"
 }
 ```
 
@@ -117,11 +173,14 @@
 {
   "error": "INCIDENT_NOT_FOUND",
   "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "message": "No mission found for incident: INC-99999",
+  "traceId": "e5f6a7b8-c9d0-1234-efab-345678901234"
 }
 ```
 
 ### Error `403 Forbidden` — Auth ไม่ผ่าน
+
+> ⚠️ Response นี้มาจาก API Gateway โดยตรง — ไม่มี `X-Trace-Id` header และไม่มี `traceId` ใน body
 
 ```json
 {
@@ -211,6 +270,15 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 
 ### Success `200 OK` — Degraded Mode (Demo 1 เสมอ)
 
+**Response Headers:**
+
+```
+Content-Type: application/json
+X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
+```
+
+**Response Body:**
+
 ```json
 {
   "incident_id": "INC-001",
@@ -258,7 +326,7 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
   "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
   "location": "13.7563,100.5018",
   "incident_type": "FLOOD",
-  "timeline": [ ... ],
+  "timeline": [ "..." ],
   "data_source": "full"
 }
 ```
@@ -280,11 +348,14 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 {
   "error": "INCIDENT_NOT_FOUND",
   "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "message": "No mission found for incident: INC-99999",
+  "traceId": "11112222-3333-4444-5555-666677778888"
 }
 ```
 
 ### Error `403 Forbidden`
+
+> ⚠️ Response นี้มาจาก API Gateway โดยตรง — ไม่มี `X-Trace-Id` header และไม่มี `traceId` ใน body
 
 ```json
 {
@@ -371,6 +442,15 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 
 ### Success `200 OK`
 
+**Response Headers:**
+
+```
+Content-Type: application/json
+X-Trace-Id: aabb1122-ccdd-3344-eeff-556677889900
+```
+
+**Response Body:**
+
 ```json
 {
   "upload_url": "https://s3.amazonaws.com/mission-evidence-bucket/evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
@@ -403,7 +483,8 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 {
   "error": "MISSING_PARAMETER",
   "code": "MISSING_PARAMETER",
-  "message": "file_name and content_type are required"
+  "message": "file_name and content_type are required",
+  "traceId": "11aa22bb-33cc-44dd-55ee-66ff77008811"
 }
 ```
 
@@ -413,7 +494,8 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 {
   "error": "INVALID_CONTENT_TYPE",
   "code": "INVALID_CONTENT_TYPE",
-  "message": "Supported content types: image/jpeg, image/png, image/webp"
+  "message": "Supported content types: image/jpeg, image/png, image/webp",
+  "traceId": "22bb33cc-44dd-55ee-66ff-778800991122"
 }
 ```
 
@@ -423,11 +505,14 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 {
   "error": "INCIDENT_NOT_FOUND",
   "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "message": "No mission found for incident: INC-99999",
+  "traceId": "33cc44dd-55ee-66ff-7788-009911223344"
 }
 ```
 
 ### Error `403 Forbidden`
+
+> ⚠️ Response นี้มาจาก API Gateway โดยตรง — ไม่มี `X-Trace-Id` header และไม่มี `traceId` ใน body
 
 ```json
 {
@@ -541,6 +626,15 @@ curl -s -H "x-api-key: $API_KEY" \
 
 ### Success `200 OK`
 
+**Response Headers:**
+
+```
+Content-Type: application/json
+X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
+```
+
+**Response Body:**
+
 ```json
 {
   "team_id": "TEAM-ALPHA",
@@ -621,7 +715,8 @@ curl -s -H "x-api-key: $API_KEY" \
 {
   "error": "MISSING_PARAMETER",
   "code": "MISSING_PARAMETER",
-  "message": "team_id query parameter is required"
+  "message": "team_id query parameter is required",
+  "traceId": "44556677-8899-aabb-ccdd-eeff00112233"
 }
 ```
 
@@ -631,11 +726,14 @@ curl -s -H "x-api-key: $API_KEY" \
 {
   "error": "INVALID_STATUS",
   "code": "INVALID_STATUS",
-  "message": "Invalid status filter: UNKNOWN_STATUS. Valid values: DISPATCHED, EN_ROUTE, ON_SITE, NEED_BACKUP, RESOLVED"
+  "message": "Invalid status filter: UNKNOWN_STATUS. Valid values: DISPATCHED, EN_ROUTE, ON_SITE, NEED_BACKUP, RESOLVED",
+  "traceId": "55667788-99aa-bbcc-ddee-ff0011223344"
 }
 ```
 
 ### Error `403 Forbidden`
+
+> ⚠️ Response นี้มาจาก API Gateway โดยตรง — ไม่มี `X-Trace-Id` header และไม่มี `traceId` ใน body
 
 ```json
 {
@@ -671,3 +769,6 @@ GSI: team-index
 | **Validation**             | ตรวจสอบ team_id ไม่ว่าง, status (ถ้ามี) เป็นค่าที่ถูกต้อง                              |
 | **Performance**            | GSI query = single-digit ms / Filter Expression ทำที่ DynamoDB → ไม่กระทบ Lambda       |
 | **Empty Result**           | ไม่พบภารกิจ → return `200 OK` พร้อม `missions: []` (ไม่ใช่ 404)                        |
+```
+
+---
