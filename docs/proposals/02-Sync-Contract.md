@@ -1,6 +1,3 @@
-# ✅ 02-Sync-Contract.md (ฉบับแก้ไขแล้ว)
-
-```markdown
 # **Synchronous Function Contract**
 
 > **Base URL:** `https://api.disaster-management.net/mission-progress/v1`
@@ -769,6 +766,6 @@ GSI: team-index
 | **Validation**             | ตรวจสอบ team_id ไม่ว่าง, status (ถ้ามี) เป็นค่าที่ถูกต้อง                              |
 | **Performance**            | GSI query = single-digit ms / Filter Expression ทำที่ DynamoDB → ไม่กระทบ Lambda       |
 | **Empty Result**           | ไม่พบภารกิจ → return `200 OK` พร้อม `missions: []` (ไม่ใช่ 404)                        |
-```
+
 
 ---
