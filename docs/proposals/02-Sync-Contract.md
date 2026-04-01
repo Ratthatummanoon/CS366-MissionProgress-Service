@@ -1,4 +1,4 @@
-# Synchronous Function Contract
+# **Synchronous Function Contract**
 
 > **Base URL:** `https://api.disaster-management.net/mission-progress/v1`
 

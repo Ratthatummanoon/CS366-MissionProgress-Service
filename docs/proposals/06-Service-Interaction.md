@@ -1,4 +1,4 @@
-# Service Interaction Diagram
+# **Service Interaction Diagram**
 
 ```mermaid
 graph LR
