@@ -1,5 +1,3 @@
-
-
 # 🔍 Q5: Static Contract Analysis
 
 > **"Do all endpoints use /v1/? Do async events have schemaVersion? Is there a written policy for breaking changes?"**
@@ -13,6 +11,7 @@
 ```
 Base URL: https://api.disaster-management.net/mission-progress/v1
 ```
+
 ✅ มี `/v1`
 
 ### ตรวจจาก Terraform (`api_gateway.tf`):
@@ -24,6 +23,7 @@ resource "aws_api_gateway_stage" "v1" {
 ```
 
 URL จริงจะเป็น:
+
 ```
 https://{api-id}.execute-api.{region}.amazonaws.com/v1/incidents/{id}
 https://{api-id}.execute-api.{region}.amazonaws.com/v1/incidents/{id}/progress
@@ -50,7 +50,7 @@ https://{api-id}.execute-api.{region}.amazonaws.com/v1/incidents/{id}/progress
 }
 ```
 
-### ตรวจจาก Code (`events.go`):
+### ตรวจจาก Code (`src/backend/internal/models/events.go`):
 
 ```go
 type MissionStatusChangedEvent struct {
@@ -94,14 +94,14 @@ Entries: []ebtypes.PutEventsRequestEntry{
 
 ### ตรวจจาก Doc ทั้งหมดที่มี:
 
-| ไฟล์ | มี Breaking Change Policy? |
-|---|:---:|
-| `01-Service-Overview.md` | ❌ |
-| `02-Sync-Contract.md` | ❌ |
-| `03-Async-Contract.md` | ❌ |
-| `04-Service-Data.md` | ไม่ได้ดู |
-| `05-Service-Architecture.md` | ไม่ได้ดู |
-| `README.md` | ไม่ได้ดู |
+| ไฟล์                         | มี Breaking Change Policy? |
+| ---------------------------- | :------------------------: |
+| `01-Service-Overview.md`     |             ❌             |
+| `02-Sync-Contract.md`        |             ❌             |
+| `03-Async-Contract.md`       |             ❌             |
+| `04-Service-Data.md`         |          ไม่ได้ดู          |
+| `05-Service-Architecture.md` |          ไม่ได้ดู          |
+| `README.md`                  |          ไม่ได้ดู          |
 
 ### ❌ Verdict: **ไม่ผ่าน — ไม่มี written policy สำหรับ breaking changes**
 
@@ -109,11 +109,11 @@ Entries: []ebtypes.PutEventsRequestEntry{
 
 ## 📊 สรุป Q5
 
-| เกณฑ์ | Status | หลักฐาน |
-|---|:---:|---|
-| ทุก endpoint ใช้ `/v1/`? | ✅ **ผ่าน** | Terraform `stage_name = "v1"` + Doc Base URL |
-| Async events มี `schemaVersion`? | ❌ **ไม่ผ่าน** | ไม่มีใน event struct ทั้ง 3 ตัว |
-| มี breaking change policy? | ❌ **ไม่ผ่าน** | ไม่พบในเอกสารใดเลย |
+| เกณฑ์                            |     Status     | หลักฐาน                                      |
+| -------------------------------- | :------------: | -------------------------------------------- |
+| ทุก endpoint ใช้ `/v1/`?         |  ✅ **ผ่าน**   | Terraform `stage_name = "v1"` + Doc Base URL |
+| Async events มี `schemaVersion`? | ❌ **ไม่ผ่าน** | ไม่มีใน event struct ทั้ง 3 ตัว              |
+| มี breaking change policy?       | ❌ **ไม่ผ่าน** | ไม่พบในเอกสารใดเลย                           |
 
 ## ❌ Overall Q5 Verdict: **พบ Static Contract Anti-Pattern**
 
@@ -123,7 +123,7 @@ Entries: []ebtypes.PutEventsRequestEntry{
 
 ### Fix 1: เพิ่ม `schemaVersion` ใน Event Struct
 
-**`events.go` — แก้ไข:**
+**`src/backend/internal/models/events.go` — แก้ไข:**
 
 ```go
 type MissionStatusChangedEvent struct {
@@ -199,9 +199,9 @@ publisher.PublishImpactLevelUpdated(ctx, models.ImpactLevelUpdatedEvent{
 และเพิ่มใน Field Definition table:
 
 ```markdown
-| Field                | Type   | Required | Description           |
-| -------------------- | ------ | -------- | --------------------- |
-| detail.schemaVersion | String | ✅       | Schema version ("1.0")|
+| Field                | Type   | Required | Description            |
+| -------------------- | ------ | -------- | ---------------------- |
+| detail.schemaVersion | String | ✅       | Schema version ("1.0") |
 ```
 
 ### Fix 4: เพิ่ม Breaking Change Policy
@@ -212,22 +212,25 @@ publisher.PublishImpactLevelUpdated(ctx, models.ImpactLevelUpdatedEvent{
 ## Breaking Change Policy
 
 ### Sync API (REST)
+
 - Breaking changes ต้องเพิ่ม version ใหม่ (เช่น `/v2/`)
 - `/v1/` ต้อง support อย่างน้อย 3 เดือนหลัง `/v2/` เปิดใช้
 - Non-breaking changes (เพิ่ม field ใหม่ optional) ทำได้โดยไม่ต้องขึ้น version
 
 ### Async Events (EventBridge)
+
 - เพิ่ม field ใหม่ = non-breaking (consumer ต้อง ignore unknown fields)
 - ลบ field / เปลี่ยน type = breaking → ต้องขึ้น schemaVersion
 - Consumer ต้องเช็ค schemaVersion ก่อน process
 
 ### อะไรคือ Breaking Change?
-| Breaking ❌                    | Non-Breaking ✅          |
-| ----------------------------- | ----------------------- |
-| ลบ field ที่มีอยู่              | เพิ่ม field ใหม่ (optional) |
-| เปลี่ยน type ของ field         | เพิ่ม enum value ใหม่     |
-| เปลี่ยน URL path              | เพิ่ม query parameter ใหม่ |
-| เปลี่ยนความหมายของ field       | เพิ่ม header ใหม่         |
+
+| Breaking ❌              | Non-Breaking ✅             |
+| ------------------------ | --------------------------- |
+| ลบ field ที่มีอยู่       | เพิ่ม field ใหม่ (optional) |
+| เปลี่ยน type ของ field   | เพิ่ม enum value ใหม่       |
+| เปลี่ยน URL path         | เพิ่ม query parameter ใหม่  |
+| เปลี่ยนความหมายของ field | เพิ่ม header ใหม่           |
 ```
 
 ---
