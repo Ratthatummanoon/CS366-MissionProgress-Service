@@ -1009,3 +1009,61 @@ curl -s -X POST \
 | 6   | POST progress พร้อม image_key             | ✅ สำเร็จ  | 200         | Timeline มี image_key       |
 | 7   | MissionAssigned event → mission ถูกสร้าง  | ✅ สำเร็จ  | —           | DISPATCHED + Timeline entry |
 | 8   | MissionAssigned event ซ้ำ → skip          | ✅ สำเร็จ  | —           | ไม่ error (idempotent)      |
+
+---
+
+## Frontend — Rescue Team Dashboard
+
+### Tech Stack
+
+- **Next.js 16** (App Router, TypeScript, Tailwind CSS)
+- พัฒนาอยู่ใน `src/frontend/`
+
+### หน้าจอหลัก
+
+| หน้า           | Route                    | คำอธิบาย                                                                   |
+| -------------- | ------------------------ | -------------------------------------------------------------------------- |
+| Team Selection | `/`                      | กรอก API URL, API Key, เลือกทีม → บันทึกใน localStorage                    |
+| Dashboard      | `/dashboard`             | แสดงรายการภารกิจทั้งหมดของทีม, กรองตามสถานะ, สรุปจำนวนแต่ละสถานะ           |
+| Mission Detail | `/mission/[incident_id]` | รายละเอียดภารกิจ, State Machine Diagram, อัปเดตสถานะ, อัปโหลดรูป, ไทม์ไลน์ |
+
+### วิธีรัน Frontend
+
+```bash
+cd src/frontend
+npm install
+npm run dev
+# เปิด http://localhost:3000
+```
+
+### โครงสร้างไฟล์ Frontend
+
+```
+src/frontend/
+├── app/
+│   ├── layout.tsx              # Root layout + ConfigProvider
+│   ├── page.tsx                # Team Selection (login)
+│   ├── globals.css             # Global styles
+│   ├── dashboard/
+│   │   └── page.tsx            # Dashboard — รายการภารกิจ
+│   └── mission/
+│       └── [incident_id]/
+│           └── page.tsx        # Mission Detail + Timeline
+├── components/
+│   ├── Navbar.tsx              # Navigation bar
+│   ├── StatusBadge.tsx         # Badge แสดงสถานะ
+│   ├── ImpactBadge.tsx         # Badge แสดงระดับความรุนแรง
+│   └── StateMachineDiagram.tsx # SVG state machine visualization
+└── lib/
+    ├── api.ts                  # API client (fetch wrapper)
+    ├── config-context.tsx      # React Context สำหรับ API config
+    └── types.ts                # TypeScript interfaces + constants
+```
+
+### ฟีเจอร์เด่น
+
+- **State Machine Diagram** — SVG แสดง state ปัจจุบันแบบ highlight สีน้ำเงิน
+- **Presigned URL Upload** — อัปโหลดรูปภาพหลักฐานตรงไป S3
+- **Status Filter** — กรองภารกิจตามสถานะบน Dashboard
+- **Partial Data Fallback** — แสดงข้อมูลแม้ IncidentTracking Service ล่ม (data_source = partial)
+- **Responsive** — ใช้งานได้ทั้ง desktop และ mobile
