@@ -93,3 +93,54 @@ func (r *MissionRepo) CreateMission(ctx context.Context, mission *models.Mission
 	}
 	return nil
 }
+
+// CreateMissionIdempotent inserts a new mission only if mission_id does not already exist.
+func (r *MissionRepo) CreateMissionIdempotent(ctx context.Context, mission *models.MissionAssignment) error {
+	item, err := attributevalue.MarshalMap(mission)
+	if err != nil {
+		return fmt.Errorf("marshal mission: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           aws.String(r.tableName),
+		Item:                item,
+		ConditionExpression: aws.String("attribute_not_exists(mission_id)"),
+	})
+	if err != nil {
+		return fmt.Errorf("put mission (idempotent): %w", err)
+	}
+	return nil
+}
+
+// GetMissionsByTeamID queries the team-index GSI for all missions of a team.
+func (r *MissionRepo) GetMissionsByTeamID(ctx context.Context, teamID string, statusFilter string) ([]models.MissionAssignment, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("team-index"),
+		KeyConditionExpression: aws.String("rescue_team_id = :tid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":tid": &types.AttributeValueMemberS{Value: teamID},
+		},
+	}
+
+	if statusFilter != "" {
+		input.FilterExpression = aws.String("current_status = :st")
+		input.ExpressionAttributeValues[":st"] = &types.AttributeValueMemberS{Value: statusFilter}
+	}
+
+	output, err := r.client.Query(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("query missions by team_id: %w", err)
+	}
+
+	var missions []models.MissionAssignment
+	if err := attributevalue.UnmarshalListOfMaps(output.Items, &missions); err != nil {
+		return nil, fmt.Errorf("unmarshal missions: %w", err)
+	}
+	return missions, nil
+}
