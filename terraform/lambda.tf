@@ -139,3 +139,104 @@ resource "aws_lambda_permission" "eventbridge_outbox_processor" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.outbox_processor_schedule.arn
 }
+
+# ---------------------------------------------------
+# Lambda: presigned-url
+# ---------------------------------------------------
+resource "aws_lambda_function" "presigned_url" {
+  function_name = "${var.project_name}-presigned-url"
+  role          = local.lab_role_arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  memory_size   = 256
+  timeout       = 30
+  filename      = "${path.module}/build/presigned-url.zip"
+
+  source_code_hash = fileexists("${path.module}/build/presigned-url.zip") ? filebase64sha256("${path.module}/build/presigned-url.zip") : null
+
+  environment {
+    variables = {
+      EVIDENCE_BUCKET = aws_s3_bucket.evidence.id
+      TABLE_MISSION   = aws_dynamodb_table.mission_assignment.name
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "apigw_presigned_url" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.presigned_url.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
+
+# ---------------------------------------------------
+# Lambda: list-missions
+# ---------------------------------------------------
+resource "aws_lambda_function" "list_missions" {
+  function_name = "${var.project_name}-list-missions"
+  role          = local.lab_role_arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  memory_size   = 256
+  timeout       = 30
+  filename      = "${path.module}/build/list-missions.zip"
+
+  source_code_hash = fileexists("${path.module}/build/list-missions.zip") ? filebase64sha256("${path.module}/build/list-missions.zip") : null
+
+  environment {
+    variables = {
+      TABLE_MISSION = aws_dynamodb_table.mission_assignment.name
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "apigw_list_missions" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.list_missions.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
+
+# ---------------------------------------------------
+# Lambda: mission-assigned-handler
+# ---------------------------------------------------
+resource "aws_lambda_function" "mission_assigned_handler" {
+  function_name = "${var.project_name}-mission-assigned-handler"
+  role          = local.lab_role_arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  memory_size   = 256
+  timeout       = 30
+  filename      = "${path.module}/build/mission-assigned-handler.zip"
+
+  source_code_hash = fileexists("${path.module}/build/mission-assigned-handler.zip") ? filebase64sha256("${path.module}/build/mission-assigned-handler.zip") : null
+
+  environment {
+    variables = {
+      TABLE_MISSION  = aws_dynamodb_table.mission_assignment.name
+      TABLE_TIMELINE = aws_dynamodb_table.mission_timeline.name
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "eventbridge_mission_assigned_handler" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.mission_assigned_handler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.mission_assigned.arn
+}
