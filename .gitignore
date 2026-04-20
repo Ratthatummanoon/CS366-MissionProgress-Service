@@ -1,7 +1,44 @@
-# General
-.env
+# ==========================================
+# 1. General & OS
+# ==========================================
 .DS_Store
+.DS_Store?
+._*
 
+# ==========================================
+# 2. Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# เผื่อมีการแยก .env ในโฟลเดอร์ frontend
+src/frontend/.env*
+
+# ==========================================
+# 3. Frontend (Next.js / Node.js)
+# ==========================================
+# Dependencies
+node_modules/
+
+# Next.js build output
+src/frontend/.next/
+src/frontend/out/
+src/frontend/build/
+src/frontend/dist/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Node/npm Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# 4. Terraform
+# ==========================================
 # Local .terraform directories
 **/.terraform/*
 
@@ -19,5 +56,8 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# ==========================================
+# 5. Go (Backend)
+# ==========================================
 # Go build artifacts 
 terraform/build/
