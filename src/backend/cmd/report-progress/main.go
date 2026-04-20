@@ -124,35 +124,38 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 	// 8. Publish events (non-blocking with outbox fallback)
 	publisher.PublishMissionStatusChanged(ctx, models.MissionStatusChangedEvent{
-		MissionID:    mission.MissionID,
-		IncidentID:   mission.IncidentID,
-		RescueTeamID: mission.RescueTeamID,
-		OldStatus:    oldStatus,
-		NewStatus:    req.Status,
-		ChangedAt:    now,
-		ChangedBy:    rescueTeamID,
+		SchemaVersion: "1.0",
+		MissionID:     mission.MissionID,
+		IncidentID:    mission.IncidentID,
+		RescueTeamID:  mission.RescueTeamID,
+		OldStatus:     oldStatus,
+		NewStatus:     req.Status,
+		ChangedAt:     now,
+		ChangedBy:     rescueTeamID,
 	})
 
 	if req.Status == "NEED_BACKUP" {
 		publisher.PublishBackupRequested(ctx, models.MissionBackupRequestedEvent{
-			MissionID:    mission.MissionID,
-			IncidentID:   mission.IncidentID,
-			RescueTeamID: mission.RescueTeamID,
-			RequestedAt:  now,
-			RequestedBy:  rescueTeamID,
-			Location:     req.CurrentLocation,
+			SchemaVersion: "1.0",
+			MissionID:     mission.MissionID,
+			IncidentID:    mission.IncidentID,
+			RescueTeamID:  mission.RescueTeamID,
+			RequestedAt:   now,
+			RequestedBy:   rescueTeamID,
+			Location:      req.CurrentLocation,
 		})
 	}
 
 	if req.NewImpactLevel != nil {
 		publisher.PublishImpactLevelUpdated(ctx, models.ImpactLevelUpdatedEvent{
-			MissionID:    mission.MissionID,
-			IncidentID:   mission.IncidentID,
-			RescueTeamID: mission.RescueTeamID,
-			OldLevel:     0,
-			NewLevel:     *req.NewImpactLevel,
-			UpdatedAt:    now,
-			UpdatedBy:    rescueTeamID,
+			SchemaVersion: "1.0",
+			MissionID:     mission.MissionID,
+			IncidentID:    mission.IncidentID,
+			RescueTeamID:  mission.RescueTeamID,
+			OldLevel:      0,
+			NewLevel:      *req.NewImpactLevel,
+			UpdatedAt:     now,
+			UpdatedBy:     rescueTeamID,
 		})
 	}
 
