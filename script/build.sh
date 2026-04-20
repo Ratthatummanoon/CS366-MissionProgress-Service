@@ -12,7 +12,7 @@ echo "=== Building Lambda functions ==="
 mkdir -p "$BUILD_DIR"
 
 # List of Lambda functions to build
-FUNCTIONS=("report-progress" "get-mission" "authorizer")
+FUNCTIONS=("report-progress" "get-mission" "authorizer" "outbox-processor")
 
 for func in "${FUNCTIONS[@]}"; do
     echo "--- Building $func ---"
