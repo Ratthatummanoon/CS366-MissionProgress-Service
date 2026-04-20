@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -29,6 +30,9 @@ func (r *TimelineRepo) AddTimelineEntry(ctx context.Context, entry *models.Timel
 	if err != nil {
 		return fmt.Errorf("marshal timeline entry: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(r.tableName),
 		Item:      item,
@@ -41,6 +45,9 @@ func (r *TimelineRepo) AddTimelineEntry(ctx context.Context, entry *models.Timel
 
 // GetTimelineByMissionID queries timeline entries sorted by timestamp.
 func (r *TimelineRepo) GetTimelineByMissionID(ctx context.Context, missionID string) ([]models.TimelineEntry, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	output, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		KeyConditionExpression: aws.String("mission_id = :mid"),
