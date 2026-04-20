@@ -6,6 +6,7 @@ type ReportProgressRequest struct {
 	Note            string `json:"note,omitempty"`
 	CurrentLocation string `json:"current_location,omitempty"`
 	NewImpactLevel  *int   `json:"new_impact_level,omitempty"`
+	ImageKey        string `json:"image_key,omitempty"`
 }
 
 // ReportProgressResponse is the response for a successful progress report.
@@ -40,4 +41,25 @@ type ErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	TraceID string `json:"traceId,omitempty"`
+}
+
+// PresignedURLRequest is the body of POST /incidents/{id}/presigned-url.
+type PresignedURLRequest struct {
+	FileName    string `json:"file_name"`
+	ContentType string `json:"content_type"`
+}
+
+// PresignedURLResponse is the response for a successful presigned URL generation.
+type PresignedURLResponse struct {
+	UploadURL string `json:"upload_url"`
+	ImageKey  string `json:"image_key"`
+	ExpiresIn int    `json:"expires_in"`
+	Message   string `json:"message"`
+}
+
+// ListMissionsResponse is the response for GET /incidents (list missions by team).
+type ListMissionsResponse struct {
+	TeamID        string              `json:"team_id"`
+	TotalMissions int                 `json:"total_missions"`
+	Missions      []MissionAssignment `json:"missions"`
 }
