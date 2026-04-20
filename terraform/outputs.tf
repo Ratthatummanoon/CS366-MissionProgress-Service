@@ -8,3 +8,18 @@ output "api_key_value" {
   value       = var.api_key_value
   sensitive   = true
 }
+
+output "frontend_url" {
+  description = "Frontend website URL"
+  value       = aws_s3_bucket_website_configuration.frontend.website_endpoint
+}
+
+output "frontend_bucket" {
+  description = "Frontend S3 bucket name"
+  value       = aws_s3_bucket.frontend.id
+}
+
+output "evidence_bucket" {
+  description = "Evidence S3 bucket name"
+  value       = aws_s3_bucket.evidence.id
+}
