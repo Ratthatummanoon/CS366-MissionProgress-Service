@@ -78,9 +78,9 @@ Frontend (Next.js → S3 Static Website)
 | ------------------------------ | -------------------------------------- | -------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
 | **IncidentTracking Service**   | กฤตเมธ ดำทองคำ (Krittamet Damthongkam) | HTTP GET `/incidents/{id}` (Sync)                  | `incident_service_url`                   | `data_source: "partial"` (ไม่มี description, location, incident_type) |
 | **IncidentTracking SQS**       | กฤตเมธ ดำทองคำ                         | EventBridge → SQS (Async)                          | `incident_tracking_sqs_arn`              | Events ไปที่ CloudWatch Logs แทน                                      |
-| **Dispatch SQS**               | เจ้าของ Dispatch Service               | EventBridge → SQS (Async, เฉพาะ RESOLVED)          | `dispatch_sqs_arn`                       | Events ไปที่ CloudWatch Logs แทน                                      |
-| **Prioritization SQS**         | เจ้าของ Prioritization Service         | EventBridge → SQS (Async)                          | `prioritization_sqs_arn`                 | Events ไปที่ CloudWatch Logs แทน                                      |
-| **Dispatch Service (Inbound)** | เจ้าของ Dispatch Service               | EventBridge → Lambda (Async, MissionAssignedEvent) | — (Event bus: `mission-progress-events`) | ใช้ seed-data แทน                                                     |
+| **Dispatch SQS**               | Noppakron Songkroh                     | EventBridge → SQS (Async, เฉพาะ RESOLVED)          | `dispatch_sqs_arn`                       | Events ไปที่ CloudWatch Logs แทน                                      |
+| **Prioritization SQS**         | Nattasak Chonmanat                     | EventBridge → SQS (Async)                          | `prioritization_sqs_arn`                 | Events ไปที่ CloudWatch Logs แทน                                      |
+| **Dispatch Service (Inbound)** | Noppakron Songkroh                     | EventBridge → Lambda (Async, MissionAssignedEvent) | — (Event bus: `mission-progress-events`) | ใช้ seed-data แทน                                                     |
 
 ### EventBridge Events ที่ Publish (Outbound)
 
@@ -935,7 +935,12 @@ curl -s -H "x-api-key: $API_KEY" -H "X-Rescue-Team-ID: TEAM-ALPHA" \
 
 > **Lambda ที่ทำงาน:** `mission-progress-report-progress`
 > **DynamoDB Tables:** อัปเดต MissionAssignment + เพิ่ม MissionTimeline
-> **Async:** Publish events ไปยัง EventBridge → CloudWatch Logs + SQS ของ Service เพื่อน
+> **Async:** Publish events ไปยัง EventBridge → CloudWatch Logs + SQS ของ Service เพื่อน:
+>
+> - `MissionStatusChanged` → **IncidentTracking Service** (Krittamet Damthongkam) + **Dispatch Service** (Noppakron Songkroh, เฉพาะ RESOLVED)
+> - `MissionBackupRequested` → **Rescue Prioritization Service** (Nattasak Chonmanat)
+> - `ImpactLevelUpdated` → **IncidentTracking Service** (Krittamet Damthongkam) + **Rescue Prioritization Service** (Nattasak Chonmanat)
+>
 > **Fallback:** ถ้า EventBridge ล้มเหลว → บันทึกลง EventOutbox (Outbox Pattern)
 
 #### ✅ Test #10 — เปลี่ยนสถานะ DISPATCHED → EN_ROUTE (INC-001)
@@ -1016,9 +1021,9 @@ curl -s -X POST \
 
 > 📌 **Events ที่ถูก publish (3 events):**
 >
-> 1. `MissionStatusChanged` → CloudWatch Logs + IncidentTracking SQS
-> 2. `MissionBackupRequested` → CloudWatch Logs + Prioritization SQS
-> 3. `ImpactLevelUpdated` → CloudWatch Logs + IncidentTracking SQS + Prioritization SQS
+> 1. `MissionStatusChanged` → CloudWatch Logs + IncidentTracking SQS (**Krittamet Damthongkam**)
+> 2. `MissionBackupRequested` → CloudWatch Logs + Prioritization SQS (**Nattasak Chonmanat**)
+> 3. `ImpactLevelUpdated` → CloudWatch Logs + IncidentTracking SQS (**Krittamet Damthongkam**) + Prioritization SQS (**Nattasak Chonmanat**)
 >
 > ตรวจสอบทั้ง 3 events ได้ใน CloudWatch Logs ดูหัวข้อ 11.8
 
@@ -1048,7 +1053,7 @@ curl -s -X POST \
 
 #### ✅ Test #14 — เปลี่ยนสถานะ ON_SITE → RESOLVED พร้อม ImpactLevel (INC-001)
 
-> **สำคัญ:** เมื่อเปลี่ยนเป็น `RESOLVED` จะ trigger event `MissionStatusChanged` ไปยัง **Dispatch SQS** ด้วย (เฉพาะ RESOLVED เท่านั้นที่ส่งไป Dispatch)
+> **สำคัญ:** เมื่อเปลี่ยนเป็น `RESOLVED` จะ trigger event `MissionStatusChanged` ไปยัง **Dispatch SQS** ของ **Noppakron Songkroh** ด้วย (เฉพาะ RESOLVED เท่านั้นที่ส่งไป Dispatch — เพื่อปลดล็อกทีมกู้ภัย BUSY → AVAILABLE)
 
 ```bash
 curl -s -X POST \
@@ -1074,8 +1079,8 @@ curl -s -X POST \
 
 > 📌 **Events ที่ถูก publish (2 events):**
 >
-> 1. `MissionStatusChanged` → CloudWatch Logs + IncidentTracking SQS + **Dispatch SQS** (เพราะ RESOLVED)
-> 2. `ImpactLevelUpdated` → CloudWatch Logs + IncidentTracking SQS + Prioritization SQS
+> 1. `MissionStatusChanged` → CloudWatch Logs + IncidentTracking SQS (**Krittamet Damthongkam**) + **Dispatch SQS** (**Noppakron Songkroh**, เพราะ RESOLVED)
+> 2. `ImpactLevelUpdated` → CloudWatch Logs + IncidentTracking SQS (**Krittamet Damthongkam**) + Prioritization SQS (**Nattasak Chonmanat**)
 
 #### ✅ Test #14b — ยืนยัน GET หลัง progress: Timeline มี entry ใหม่
 
@@ -1532,16 +1537,20 @@ aws logs filter-log-events \
 }
 ```
 
-> 💡 **สำหรับ Presentation:** แสดง CloudWatch Logs เหล่านี้เพื่อพิสูจน์ว่า events ถูกส่งออกไปจริง → Service เพื่อนสามารถ subscribe ผ่าน SQS ได้
+> 💡 **สำหรับ Presentation:** แสดง CloudWatch Logs เหล่านี้เพื่อพิสูจน์ว่า events ถูกส่งออกไปจริง → Service เพื่อนสามารถ subscribe ผ่าน SQS ได้:
+>
+> - `MissionStatusChanged` → **IncidentTracking** (Krittamet Damthongkam) + **Dispatch** (Noppakron Songkroh, เฉพาะ RESOLVED)
+> - `MissionBackupRequested` → **Prioritization** (Nattasak Chonmanat)
+> - `ImpactLevelUpdated` → **IncidentTracking** (Krittamet Damthongkam) + **Prioritization** (Nattasak Chonmanat)
 
 ---
 
 ### 11.9 ทดสอบ Inbound Event — MissionAssignedEvent (Lambda: `mission-assigned-handler`)
 
 > **Lambda ที่ทำงาน:** `mission-progress-mission-assigned-handler`
-> **Event มาจาก:** Dispatch Management Service (เจ้าของ Dispatch Service)
-> **การทำงาน:** เมื่อ Dispatch Service มอบหมายภารกิจ → สร้าง mission record อัตโนมัติ (DISPATCHED)
-> **Endpoint นี้เพิ่มใน Demo 2 — เป็น Async (ไม่ใช่ REST API)**
+> **Event มาจาก:** **Dispatch Management Service** (เจ้าของ: Noppakron Songkroh)
+> **การทำงาน:** เมื่อ Dispatch Service (Noppakron Songkroh) มอบหมายภารกิจ → สร้าง mission record อัตโนมัติ (DISPATCHED)
+> \*\*Endpoint นี้เพิ่มใน Demo 2 — เป็น Async (ไม่ใช่ REST API)
 
 #### ✅ Test #27 — จำลองส่ง MissionAssignedEvent ผ่าน AWS CLI
 
