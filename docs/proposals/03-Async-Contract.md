@@ -38,6 +38,7 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
   "source": "mission-progress-service",
   "detail-type": "MissionStatusChanged",
   "detail": {
+    "schema_version": "1.0",
     "mission_id": "MSN-001",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
@@ -54,18 +55,19 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 ### Field Definition
 
-| Field                 | Type            | Required | Description              |
-| --------------------- | --------------- | -------- | ------------------------ |
-| source                | String          | ✅       | mission-progress-service |
-| detail-type           | String          | ✅       | MissionStatusChanged     |
-| detail.mission_id     | String          | ✅       | รหัสภารกิจ               |
-| detail.incident_id    | String          | ✅       | รหัสเหตุการณ์            |
-| detail.rescue_team_id | String          | ✅       | ทีมกู้ภัย                |
-| detail.old_status     | String          | ✅       | สถานะเดิม                |
-| detail.new_status     | String          | ✅       | สถานะใหม่                |
-| detail.note           | String          | ❌       | หมายเหตุ                 |
-| detail.updated_at     | ISO 8601 String | ✅       | เวลา                     |
-| detail.performed_by   | String          | ✅       | ผู้กระทำ                 |
+| Field                 | Type            | Required | Description                     |
+| --------------------- | --------------- | -------- | ------------------------------- |
+| source                | String          | ✅       | mission-progress-service        |
+| detail-type           | String          | ✅       | MissionStatusChanged            |
+| detail.schema_version | String          | ✅       | Schema version (current: "1.0") |
+| detail.mission_id     | String          | ✅       | รหัสภารกิจ                      |
+| detail.incident_id    | String          | ✅       | รหัสเหตุการณ์                   |
+| detail.rescue_team_id | String          | ✅       | ทีมกู้ภัย                       |
+| detail.old_status     | String          | ✅       | สถานะเดิม                       |
+| detail.new_status     | String          | ✅       | สถานะใหม่                       |
+| detail.note           | String          | ❌       | หมายเหตุ                        |
+| detail.updated_at     | ISO 8601 String | ✅       | เวลา                            |
+| detail.performed_by   | String          | ✅       | ผู้กระทำ                        |
 
 ---
 
@@ -124,6 +126,7 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
   "source": "mission-progress-service",
   "detail-type": "MissionBackupRequested",
   "detail": {
+    "schema_version": "1.0",
     "mission_id": "MSN-001",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
@@ -140,10 +143,11 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
 
 ### Field Definition
 
-| Field             | Required | Description          |
-| ----------------- | -------- | -------------------- |
-| detail.new_status | ✅       | ต้องเป็น NEED_BACKUP |
-| detail.old_status | ✅       | ต้องเป็น ON_SITE     |
+| Field                 | Required | Description                     |
+| --------------------- | -------- | ------------------------------- |
+| detail.schema_version | ✅       | Schema version (current: "1.0") |
+| detail.new_status     | ✅       | ต้องเป็น NEED_BACKUP            |
+| detail.old_status     | ✅       | ต้องเป็น ON_SITE                |
 
 ---
 
@@ -186,6 +190,7 @@ Event เมื่อมีการปรับ Impact Level จากหน้
   "source": "mission-progress-service",
   "detail-type": "ImpactLevelUpdated",
   "detail": {
+    "schema_version": "1.0",
     "mission_id": "MSN-001",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
