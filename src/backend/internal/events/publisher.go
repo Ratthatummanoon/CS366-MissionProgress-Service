@@ -60,7 +60,10 @@ func (p *Publisher) publish(ctx context.Context, detailType string, payload inte
 		return
 	}
 
-	_, err = p.ebClient.PutEvents(ctx, &eventbridge.PutEventsInput{
+	ebCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, err = p.ebClient.PutEvents(ebCtx, &eventbridge.PutEventsInput{
 		Entries: []ebtypes.PutEventsRequestEntry{
 			{
 				Source:       aws.String(source),
