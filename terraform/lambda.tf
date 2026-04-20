@@ -105,3 +105,37 @@ resource "aws_lambda_permission" "apigw_authorizer" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
 }
+
+# ---------------------------------------------------
+# Lambda: outbox-processor
+# ---------------------------------------------------
+resource "aws_lambda_function" "outbox_processor" {
+  function_name = "${var.project_name}-outbox-processor"
+  role          = local.lab_role_arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  memory_size   = 256
+  timeout       = 60
+  filename      = "${path.module}/build/outbox-processor.zip"
+
+  source_code_hash = fileexists("${path.module}/build/outbox-processor.zip") ? filebase64sha256("${path.module}/build/outbox-processor.zip") : null
+
+  environment {
+    variables = {
+      TABLE_OUTBOX   = aws_dynamodb_table.event_outbox.name
+      EVENT_BUS_NAME = aws_cloudwatch_event_bus.mission_events.name
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "eventbridge_outbox_processor" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.outbox_processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.outbox_processor_schedule.arn
+}
