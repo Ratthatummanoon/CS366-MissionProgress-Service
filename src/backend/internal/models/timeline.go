@@ -9,4 +9,5 @@ type TimelineEntry struct {
 	Description string `json:"description" dynamodbav:"description"`
 	PerformedBy string `json:"performed_by" dynamodbav:"performed_by"`
 	GPSLocation string `json:"gps_location,omitempty" dynamodbav:"gps_location,omitempty"`
+	ImageKey    string `json:"image_key,omitempty" dynamodbav:"image_key,omitempty"`
 }
