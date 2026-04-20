@@ -86,12 +86,12 @@ GET {INCIDENT_SERVICE_URL}/incidents/{incident_id}
 
 ### Async Dependencies (EventBridge → SQS)
 
-| บริการ               | วิธีเชื่อมต่อ                     | ตัวแปร Terraform            | Degraded Mode            |
-| -------------------- | --------------------------------- | --------------------------- | ------------------------ |
-| IncidentTracking     | HTTP GET `/incidents/{id}`        | `incident_service_url`      | `data_source: "partial"` |
-| IncidentTracking SQS | EventBridge → SQS                 | `incident_tracking_sqs_arn` | CloudWatch Logs fallback |
-| Dispatch SQS         | EventBridge → SQS (RESOLVED only) | `dispatch_sqs_arn`          | CloudWatch Logs fallback |
-| Prioritization SQS   | EventBridge → SQS                 | `prioritization_sqs_arn`    | CloudWatch Logs fallback |
+| บริการ               | เจ้าของ                                          | วิธีเชื่อมต่อ                     | ตัวแปร Terraform            | Degraded Mode            |
+| -------------------- | ------------------------------------------------ | --------------------------------- | --------------------------- | ------------------------ |
+| IncidentTracking     | Krittamet Damthongkam                            | HTTP GET `/incidents/{id}`        | `incident_service_url`      | `data_source: "partial"` |
+| IncidentTracking SQS | Krittamet Damthongkam                            | EventBridge → SQS                 | `incident_tracking_sqs_arn` | CloudWatch Logs fallback |
+| Dispatch SQS         | Noppakron Songkroh                               | EventBridge → SQS (RESOLVED only) | `dispatch_sqs_arn`          | CloudWatch Logs fallback |
+| Prioritization SQS   | Nattasak Chonmanat                               | EventBridge → SQS                 | `prioritization_sqs_arn`    | CloudWatch Logs fallback |
 
 ---
 
