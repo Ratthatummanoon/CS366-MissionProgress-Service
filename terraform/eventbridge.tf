@@ -159,3 +159,104 @@ resource "aws_cloudwatch_event_target" "outbox_processor_target" {
   target_id = "outbox-processor-lambda"
   arn       = aws_lambda_function.outbox_processor.arn
 }
+
+# ---------------------------------------------------
+# Rule: MissionAssignedEvent from Dispatch → mission-assigned-handler
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_rule" "mission_assigned" {
+  name           = "mission-assigned-rule"
+  description    = "Capture MissionAssignedEvent from Dispatch service"
+
+  event_pattern = jsonencode({
+    source      = ["dispatch-management-service"]
+    detail-type = ["MissionAssignedEvent"]
+  })
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_event_target" "mission_assigned_handler" {
+  rule      = aws_cloudwatch_event_rule.mission_assigned.name
+  target_id = "mission-assigned-handler-lambda"
+  arn       = aws_lambda_function.mission_assigned_handler.arn
+}
+
+# ---------------------------------------------------
+# SQS Targets: MissionStatusChanged → IncidentTracking
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_target" "mission_status_changed_incident_sqs" {
+  count          = var.incident_tracking_sqs_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.mission_status_changed.name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "mission-status-changed-incident-sqs"
+  arn            = var.incident_tracking_sqs_arn
+}
+
+# ---------------------------------------------------
+# Rule: MissionStatusChanged (RESOLVED only) → Dispatch SQS
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_rule" "mission_resolved_dispatch" {
+  count          = var.dispatch_sqs_arn != "" ? 1 : 0
+  name           = "mission-resolved-dispatch-rule"
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  description    = "Route RESOLVED status to Dispatch service"
+
+  event_pattern = jsonencode({
+    source      = ["MissionProgressService"]
+    detail-type = ["MissionStatusChanged"]
+    detail = {
+      new_status = ["RESOLVED"]
+    }
+  })
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_event_target" "mission_resolved_dispatch_sqs" {
+  count          = var.dispatch_sqs_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.mission_resolved_dispatch[0].name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "mission-resolved-dispatch-sqs"
+  arn            = var.dispatch_sqs_arn
+}
+
+# ---------------------------------------------------
+# SQS Targets: MissionBackupRequested → Prioritization
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_target" "backup_requested_prioritization_sqs" {
+  count          = var.prioritization_sqs_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.backup_requested.name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "backup-requested-prioritization-sqs"
+  arn            = var.prioritization_sqs_arn
+}
+
+# ---------------------------------------------------
+# SQS Targets: ImpactLevelUpdated → IncidentTracking + Prioritization
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_target" "impact_level_updated_incident_sqs" {
+  count          = var.incident_tracking_sqs_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.impact_level_updated.name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "impact-level-updated-incident-sqs"
+  arn            = var.incident_tracking_sqs_arn
+}
+
+resource "aws_cloudwatch_event_target" "impact_level_updated_prioritization_sqs" {
+  count          = var.prioritization_sqs_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.impact_level_updated.name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "impact-level-updated-prioritization-sqs"
+  arn            = var.prioritization_sqs_arn
+}
+
+# ---------------------------------------------------
+# NOTE: SQS Resource Policies
+# Consumer teams must add EventBridge permission on their SQS queues:
+#   Principal: events.amazonaws.com
+#   Action: sqs:SendMessage
+# ---------------------------------------------------
