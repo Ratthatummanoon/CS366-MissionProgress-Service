@@ -160,7 +160,11 @@ export default function DashboardPage() {
             {missions.map((m) => (
               <div
                 key={m.mission_id}
-                onClick={() => router.push(`/mission/${m.incident_id}`)}
+                onClick={() =>
+                  router.push(
+                    `/mission?id=${encodeURIComponent(m.incident_id)}`,
+                  )
+                }
                 className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition cursor-pointer"
               >
                 <div className="flex items-center justify-between">
