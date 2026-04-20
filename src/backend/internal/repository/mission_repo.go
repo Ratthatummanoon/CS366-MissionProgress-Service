@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -25,6 +26,9 @@ func NewMissionRepo(client *dynamodb.Client, tableName string) *MissionRepo {
 
 // GetMissionByIncidentID queries the incident-index GSI for a mission.
 func (r *MissionRepo) GetMissionByIncidentID(ctx context.Context, incidentID string) (*models.MissionAssignment, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	output, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.tableName),
 		IndexName:              aws.String("incident-index"),
@@ -50,6 +54,9 @@ func (r *MissionRepo) GetMissionByIncidentID(ctx context.Context, incidentID str
 
 // UpdateMissionStatus updates the current_status, latest_impact_level, and last_updated_at.
 func (r *MissionRepo) UpdateMissionStatus(ctx context.Context, mission *models.MissionAssignment) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.tableName),
 		Key: map[string]types.AttributeValue{
@@ -74,6 +81,9 @@ func (r *MissionRepo) CreateMission(ctx context.Context, mission *models.Mission
 	if err != nil {
 		return fmt.Errorf("marshal mission: %w", err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(r.tableName),
 		Item:      item,
