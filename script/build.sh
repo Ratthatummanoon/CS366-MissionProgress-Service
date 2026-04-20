@@ -4,6 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/src/backend"
+FRONTEND_DIR="$PROJECT_ROOT/src/frontend"
 BUILD_DIR="$PROJECT_ROOT/terraform/build"
 
 echo "=== Building Lambda functions ==="
@@ -32,6 +33,14 @@ for func in "${FUNCTIONS[@]}"; do
 done
 
 echo ""
-echo "=== Build complete ==="
+echo "=== Build complete (Lambda) ==="
 echo "Zip files in $BUILD_DIR:"
 ls -la "$BUILD_DIR"/*.zip
+
+echo ""
+echo "=== Building Frontend ==="
+cd "$FRONTEND_DIR"
+npm ci
+npx next build
+echo "=== Frontend build complete ==="
+echo "Static files in $FRONTEND_DIR/out/"
