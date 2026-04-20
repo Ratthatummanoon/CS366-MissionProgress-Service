@@ -117,6 +117,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		Description: req.Note,
 		PerformedBy: rescueTeamID,
 		GPSLocation: req.CurrentLocation,
+		ImageKey:    req.ImageKey,
 	}
 	if err := timelineRepo.AddTimelineEntry(ctx, entry); err != nil {
 		log.Printf("ERROR: add timeline entry: %v", err)
