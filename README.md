@@ -660,4 +660,352 @@ bash script/destroy.sh
 
 ---
 
-## Demo 2
+## Demo 2 — Full Integration
+
+### สิ่งที่เพิ่มจาก Demo 1
+
+| หมวด                | รายการ                               | คำอธิบาย                                                         |
+| ------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| Lambda (ใหม่)       | `presigned-url`                      | ขอ S3 Presigned URL สำหรับอัปโหลดภาพหลักฐาน                      |
+| Lambda (ใหม่)       | `list-missions`                      | ดึงรายการภารกิจทั้งหมดของทีม (GET /incidents)                    |
+| Lambda (ใหม่)       | `mission-assigned-handler`           | รับ MissionAssignedEvent จาก Dispatch → สร้าง mission อัตโนมัติ  |
+| Infrastructure      | S3 Evidence Bucket                   | เก็บภาพหลักฐานการปฏิบัติงาน + CORS สำหรับ PUT                    |
+| API Endpoint (ใหม่) | `POST /incidents/{id}/presigned-url` | ขอ URL อัปโหลดภาพ (image/jpeg, image/png, image/webp)            |
+| API Endpoint (ใหม่) | `GET /incidents`                     | ดึงรายการภารกิจของทีม กรองตามสถานะได้                            |
+| Report Progress     | `image_key` field                    | รองรับแนบ S3 key ของภาพหลักฐานใน Timeline                        |
+| EventBridge         | SQS Targets                          | ส่ง events ไป SQS ของ IncidentTracking, Dispatch, Prioritization |
+| EventBridge         | Inbound MissionAssignedEvent         | รับ event จาก `dispatch-management-service`                      |
+| IncidentTracking    | Real connection                      | เชื่อมต่อ HTTP จริง (ไม่ mock แล้ว) → `data_source: "full"`      |
+
+---
+
+### สถาปัตยกรรม Demo 2
+
+```
+Client (curl/Postman)
+        │
+        ▼
+  API Gateway (REST)
+   ├── Lambda Authorizer (ตรวจ API Key + Team ID)
+   │
+   ├── GET  /incidents/{id}              → get-mission Lambda
+   │       ├── DynamoDB (MissionAssignment, MissionTimeline)
+   │       └── HTTP → IncidentTracking Service (degraded mode)
+   │
+   ├── POST /incidents/{id}/progress     → report-progress Lambda
+   │       ├── DynamoDB (อัปเดตสถานะ + เพิ่ม Timeline + image_key)
+   │       ├── EventBridge (publish events)
+   │       │       ├── CloudWatch Logs (3 rules)
+   │       │       ├── IncidentTracking SQS
+   │       │       ├── Dispatch SQS (RESOLVED only)
+   │       │       └── Prioritization SQS
+   │       └── Outbox Table (fallback เมื่อ EventBridge ล้มเหลว)
+   │
+   ├── POST /incidents/{id}/presigned-url → presigned-url Lambda [ใหม่]
+   │       ├── DynamoDB (ตรวจว่า mission มีอยู่)
+   │       └── S3 (สร้าง Presigned PUT URL)
+   │
+   └── GET  /incidents                    → list-missions Lambda [ใหม่]
+           └── DynamoDB (query team-index GSI)
+
+  EventBridge (Inbound)
+   └── MissionAssignedEvent (from Dispatch)
+           → mission-assigned-handler Lambda [ใหม่]
+               ├── DynamoDB (สร้าง MissionAssignment)
+               └── DynamoDB (สร้าง Timeline entry)
+```
+
+---
+
+### โครงสร้างโปรเจค (อัปเดต)
+
+```
+CS366-MissionProgress-Service/
+├── src/backend/
+│   ├── cmd/
+│   │   ├── report-progress/main.go        # Lambda: POST /incidents/{id}/progress
+│   │   ├── get-mission/main.go            # Lambda: GET /incidents/{id}
+│   │   ├── authorizer/main.go             # Lambda Authorizer
+│   │   ├── outbox-processor/main.go       # Lambda: Outbox retry processor
+│   │   ├── presigned-url/main.go          # Lambda: POST /incidents/{id}/presigned-url [ใหม่]
+│   │   ├── list-missions/main.go          # Lambda: GET /incidents [ใหม่]
+│   │   └── mission-assigned-handler/main.go # Lambda: EventBridge MissionAssigned [ใหม่]
+│   ├── internal/
+│   │   ├── models/                        # Structs: Mission, Timeline, Events, Outbox, Requests
+│   │   ├── statemachine/                  # State transition validation
+│   │   ├── repository/                    # DynamoDB CRUD (+ CreateMissionIdempotent, GetMissionsByTeamID)
+│   │   ├── client/                        # HTTP Client (IncidentTracking)
+│   │   ├── events/                        # EventBridge publisher + Outbox fallback
+│   │   └── response/                      # HTTP response helpers
+│   ├── go.mod
+│   └── go.sum
+├── terraform/
+│   ├── main.tf                            # AWS provider + backend
+│   ├── variables.tf                       # ตัวแปร Terraform (+ SQS ARNs)
+│   ├── outputs.tf                         # Output: API URL, API Key
+│   ├── iam.tf                             # LabRole reference
+│   ├── dynamodb.tf                        # 3 DynamoDB tables
+│   ├── lambda.tf                          # 7 Lambda functions (เดิม 4 + ใหม่ 3)
+│   ├── api_gateway.tf                     # REST API + Authorizer + CORS (+ presigned-url, list-missions)
+│   ├── eventbridge.tf                     # Event bus + rules + SQS targets + MissionAssigned rule
+│   └── s3.tf                              # S3 Evidence bucket [ใหม่]
+├── script/
+│   ├── build.sh                           # Cross-compile Go → zip (7 functions)
+│   ├── deploy.sh                          # Build + terraform apply
+│   ├── seed-data.sh                       # Insert ข้อมูลตัวอย่างใน DynamoDB
+│   └── destroy.sh                         # terraform destroy
+├── plan/
+│   ├── implement_plan.md
+│   └── checkpoint/
+│       ├── demo1.md
+│       └── demo2.md
+└── docs/
+    ├── Service_Proposal.md
+    └── contract/
+        ├── contract_demo1.md
+        └── contract_demo2.md
+```
+
+---
+
+### API Endpoints ใหม่
+
+#### POST /incidents/{incident_id}/presigned-url
+
+ขอ S3 Presigned URL สำหรับอัปโหลดภาพหลักฐาน
+
+**Request Body:**
+
+```json
+{
+  "file_name": "flood-evidence.jpg",
+  "content_type": "image/jpeg"
+}
+```
+
+| Field          | จำเป็น | คำอธิบาย                                           |
+| -------------- | ------ | -------------------------------------------------- |
+| `file_name`    | ✅     | ชื่อไฟล์ภาพ                                        |
+| `content_type` | ✅     | MIME type: `image/jpeg`, `image/png`, `image/webp` |
+
+**Response 200:**
+
+```json
+{
+  "upload_url": "https://s3.amazonaws.com/...",
+  "image_key": "evidence/INC-001/TEAM-ALPHA/1718353500-flood-evidence.jpg",
+  "expires_in": 300,
+  "message": "Upload URL generated successfully. Use PUT method to upload."
+}
+```
+
+**อัปโหลดภาพ:**
+
+```bash
+curl -X PUT -T photo.jpg -H "Content-Type: image/jpeg" "<upload_url>"
+```
+
+**Errors:** `400 INVALID_CONTENT_TYPE`, `400 MISSING_PARAMETER`, `404 INCIDENT_NOT_FOUND`, `500 PRESIGN_FAILED`
+
+---
+
+#### GET /incidents
+
+ดึงรายการภารกิจทั้งหมดของทีม (ใช้ `X-Rescue-Team-ID` จาก header)
+
+**Query Parameters:**
+
+| Param    | จำเป็น | คำอธิบาย                                  |
+| -------- | ------ | ----------------------------------------- |
+| `status` | ❌     | กรองตามสถานะ เช่น `DISPATCHED`, `ON_SITE` |
+
+**Response 200:**
+
+```json
+{
+  "team_id": "TEAM-ALPHA",
+  "total_missions": 2,
+  "missions": [
+    {
+      "mission_id": "MSN-001",
+      "incident_id": "INC-001",
+      "rescue_team_id": "TEAM-ALPHA",
+      "current_status": "ON_SITE",
+      "latest_impact_level": 3,
+      "started_at": "2024-12-01T08:00:00Z",
+      "last_updated_at": "2024-12-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+- ถ้าไม่มี missions → return `200` กับ `missions: []` (ไม่ใช่ 404)
+- ป้องกันทีมอื่นดึงข้อมูลข้ามทีม (ใช้ Team ID จาก Authorizer)
+
+**Errors:** `400 INVALID_STATUS`
+
+---
+
+### POST /incidents/{incident_id}/progress — อัปเดต Demo 2
+
+เพิ่มฟิลด์ `image_key` ใน request body:
+
+```json
+{
+  "new_status": "ON_SITE",
+  "note": "ถึงจุดเกิดเหตุแล้ว",
+  "current_location": "13.7380,100.5230",
+  "new_impact_level": 3,
+  "image_key": "evidence/INC-001/TEAM-ALPHA/1718353500-flood-photo.jpg"
+}
+```
+
+| Field ใหม่  | จำเป็น | คำอธิบาย                                             |
+| ----------- | ------ | ---------------------------------------------------- |
+| `image_key` | ❌     | S3 key ของภาพหลักฐาน (ได้จาก presigned-url endpoint) |
+
+`image_key` จะถูกบันทึกใน Timeline entry
+
+---
+
+### EventBridge — อัปเดต Demo 2
+
+#### Outbound Events → SQS Targets
+
+| Event                    | เงื่อนไข                      | Targets                                                             |
+| ------------------------ | ----------------------------- | ------------------------------------------------------------------- |
+| `MissionStatusChanged`   | ทุกครั้งที่สถานะเปลี่ยน       | CloudWatch Logs, IncidentTracking SQS, Dispatch SQS (RESOLVED only) |
+| `MissionBackupRequested` | สถานะใหม่ = `NEED_BACKUP`     | CloudWatch Logs, Prioritization SQS                                 |
+| `ImpactLevelUpdated`     | มี `new_impact_level` ใน body | CloudWatch Logs, IncidentTracking SQS, Prioritization SQS           |
+
+#### SQS Consumer Targets (ตั้งค่าผ่าน Terraform variables)
+
+| Variable                    | Consumer Service | Events ที่ได้รับ                           |
+| --------------------------- | ---------------- | ------------------------------------------ |
+| `incident_tracking_sqs_arn` | IncidentTracking | MissionStatusChanged, ImpactLevelUpdated   |
+| `dispatch_sqs_arn`          | Dispatch         | MissionStatusChanged (RESOLVED only)       |
+| `prioritization_sqs_arn`    | Prioritization   | MissionBackupRequested, ImpactLevelUpdated |
+
+> **หมายเหตุ:** ถ้าเพื่อนสร้าง SQS เอง → ขอให้เพื่อนเพิ่ม resource policy อนุญาต EventBridge ส่ง message ด้วย
+
+#### Inbound Event (รับจาก Dispatch Service)
+
+| Event                  | Source                        | Handler                           | การทำงาน                                    |
+| ---------------------- | ----------------------------- | --------------------------------- | ------------------------------------------- |
+| `MissionAssignedEvent` | `dispatch-management-service` | `mission-assigned-handler` Lambda | สร้าง mission (DISPATCHED) + Timeline entry |
+
+**Expected Payload:**
+
+```json
+{
+  "source": "dispatch-management-service",
+  "detail-type": "MissionAssignedEvent",
+  "detail": {
+    "mission_id": "MSN-001",
+    "rescue_unit_id": "TEAM-ALPHA",
+    "incident_id": "INC-001",
+    "assigned_at": "2025-06-14T08:45:00Z"
+  }
+}
+```
+
+- Idempotent: ใช้ `attribute_not_exists(mission_id)` — ถ้า mission_id ซ้ำจะ skip (ไม่ error)
+
+---
+
+### Dependencies — อัปเดต Demo 2
+
+| บริการ               | วิธีเชื่อมต่อ                     | ตัวแปร Terraform            | Degraded Mode            |
+| -------------------- | --------------------------------- | --------------------------- | ------------------------ |
+| IncidentTracking     | HTTP GET `/incidents/{id}`        | `incident_service_url`      | `data_source: "partial"` |
+| IncidentTracking SQS | EventBridge → SQS                 | `incident_tracking_sqs_arn` | CloudWatch Logs เดิม     |
+| Dispatch SQS         | EventBridge → SQS (RESOLVED only) | `dispatch_sqs_arn`          | CloudWatch Logs เดิม     |
+| Prioritization SQS   | EventBridge → SQS                 | `prioritization_sqs_arn`    | CloudWatch Logs เดิม     |
+
+เมื่อ IncidentTracking Service พร้อมใช้งาน → ตั้งค่า `incident_service_url` ใน Terraform → `terraform apply` → ระบบจะเปลี่ยนจาก `data_source: "partial"` เป็น `"full"` อัตโนมัติ
+
+---
+
+### ทดสอบ API ใหม่ Demo 2
+
+```bash
+export API_URL="<API_GATEWAY_URL>"
+export API_KEY="<API_KEY_VALUE>"
+```
+
+#### ✅ ขอ Presigned URL
+
+```bash
+curl -s -X POST \
+  -H "x-api-key: $API_KEY" \
+  -H "X-Rescue-Team-ID: TEAM-ALPHA" \
+  -H "Content-Type: application/json" \
+  -d '{"file_name":"flood-photo.jpg","content_type":"image/jpeg"}' \
+  "$API_URL/incidents/INC-001/presigned-url" | jq .
+```
+
+#### ✅ อัปโหลดภาพ + แนบใน Progress
+
+```bash
+# 1. ขอ presigned URL (ดึง upload_url และ image_key จาก response)
+# 2. อัปโหลดภาพ
+curl -X PUT -T photo.jpg -H "Content-Type: image/jpeg" "<upload_url>"
+# 3. แนบ image_key ใน progress
+curl -s -X POST \
+  -H "x-api-key: $API_KEY" \
+  -H "X-Rescue-Team-ID: TEAM-ALPHA" \
+  -H "Content-Type: application/json" \
+  -d '{"new_status":"EN_ROUTE","note":"เดินทาง","image_key":"<image_key>"}' \
+  "$API_URL/incidents/INC-001/progress" | jq .
+```
+
+#### ✅ ดึงรายการภารกิจทั้งหมดของทีม
+
+```bash
+curl -s -H "x-api-key: $API_KEY" -H "X-Rescue-Team-ID: TEAM-ALPHA" \
+  "$API_URL/incidents" | jq .
+```
+
+#### ✅ กรองตามสถานะ
+
+```bash
+curl -s -H "x-api-key: $API_KEY" -H "X-Rescue-Team-ID: TEAM-ALPHA" \
+  "$API_URL/incidents?status=DISPATCHED" | jq .
+```
+
+#### ❌ Presigned URL — content_type ไม่รองรับ
+
+```bash
+curl -s -X POST \
+  -H "x-api-key: $API_KEY" \
+  -H "X-Rescue-Team-ID: TEAM-ALPHA" \
+  -H "Content-Type: application/json" \
+  -d '{"file_name":"doc.pdf","content_type":"application/pdf"}' \
+  "$API_URL/incidents/INC-001/presigned-url" | jq .
+```
+
+ผลลัพธ์ที่คาดหวัง (HTTP 400): `INVALID_CONTENT_TYPE`
+
+---
+
+### Design Patterns — เพิ่มใน Demo 2
+
+| Pattern          | คำอธิบาย                                                                     |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Idempotent Write | MissionAssigned handler ใช้ conditional write ป้องกัน duplicate              |
+| Presigned URL    | ให้ client อัปโหลดไฟล์ตรงไป S3 โดยไม่ผ่าน Lambda (ลด payload size + latency) |
+
+---
+
+### สรุปผลการทดสอบ Demo 2
+
+| #   | กรณีทดสอบ                                 | ประเภท     | HTTP Status | ผลที่คาดหวัง                |
+| --- | ----------------------------------------- | ---------- | ----------- | --------------------------- |
+| 1   | POST presigned-url สำเร็จ                 | ✅ สำเร็จ  | 200         | Presigned URL + image_key   |
+| 2   | POST presigned-url content_type ไม่รองรับ | ❌ ล้มเหลว | 400         | `INVALID_CONTENT_TYPE`      |
+| 3   | GET /incidents ดึงรายการภารกิจ            | ✅ สำเร็จ  | 200         | รายการภารกิจของทีม          |
+| 4   | GET /incidents กรองตามสถานะ               | ✅ สำเร็จ  | 200         | รายการภารกิจตามสถานะ        |
+| 5   | GET /incidents ทีมไม่มีภารกิจ             | ✅ สำเร็จ  | 200         | `missions: []`              |
+| 6   | POST progress พร้อม image_key             | ✅ สำเร็จ  | 200         | Timeline มี image_key       |
+| 7   | MissionAssigned event → mission ถูกสร้าง  | ✅ สำเร็จ  | —           | DISPATCHED + Timeline entry |
+| 8   | MissionAssigned event ซ้ำ → skip          | ✅ สำเร็จ  | —           | ไม่ error (idempotent)      |
