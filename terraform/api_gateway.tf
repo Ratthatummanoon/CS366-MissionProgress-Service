@@ -203,6 +203,167 @@ resource "aws_api_gateway_integration_response" "options_progress" {
 }
 
 # ---------------------------------------------------
+# Resource: /incidents/{incident_id}/presigned-url
+# ---------------------------------------------------
+resource "aws_api_gateway_resource" "presigned_url" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_resource.incident_id.id
+  path_part   = "presigned-url"
+}
+
+# ---------------------------------------------------
+# POST /incidents/{incident_id}/presigned-url
+# ---------------------------------------------------
+resource "aws_api_gateway_method" "presigned_url" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.presigned_url.id
+  http_method   = "POST"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
+
+  request_parameters = {
+    "method.request.header.x-api-key"        = true
+    "method.request.header.X-Rescue-Team-ID" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "presigned_url" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.presigned_url.id
+  http_method             = aws_api_gateway_method.presigned_url.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.presigned_url.invoke_arn
+}
+
+# ---------------------------------------------------
+# OPTIONS /incidents/{incident_id}/presigned-url (CORS)
+# ---------------------------------------------------
+resource "aws_api_gateway_method" "options_presigned_url" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.presigned_url.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_presigned_url" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.presigned_url.id
+  http_method = aws_api_gateway_method.options_presigned_url.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_presigned_url" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.presigned_url.id
+  http_method = aws_api_gateway_method.options_presigned_url.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_presigned_url" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.presigned_url.id
+  http_method = aws_api_gateway_method.options_presigned_url.http_method
+  status_code = aws_api_gateway_method_response.options_presigned_url.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,x-api-key,X-Rescue-Team-ID'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# ---------------------------------------------------
+# GET /incidents (list-missions)
+# ---------------------------------------------------
+resource "aws_api_gateway_method" "list_missions" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.incidents.id
+  http_method   = "GET"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
+
+  request_parameters = {
+    "method.request.header.x-api-key"        = true
+    "method.request.header.X-Rescue-Team-ID" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "list_missions" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.incidents.id
+  http_method             = aws_api_gateway_method.list_missions.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.list_missions.invoke_arn
+}
+
+# ---------------------------------------------------
+# OPTIONS /incidents (CORS)
+# ---------------------------------------------------
+resource "aws_api_gateway_method" "options_incidents" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.incidents.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_incidents" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.incidents.id
+  http_method = aws_api_gateway_method.options_incidents.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_incidents" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.incidents.id
+  http_method = aws_api_gateway_method.options_incidents.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_incidents" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.incidents.id
+  http_method = aws_api_gateway_method.options_incidents.http_method
+  status_code = aws_api_gateway_method_response.options_incidents.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,x-api-key,X-Rescue-Team-ID'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# ---------------------------------------------------
 # Deployment & Stage
 # ---------------------------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
@@ -213,12 +374,19 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_resource.incidents.id,
       aws_api_gateway_resource.incident_id.id,
       aws_api_gateway_resource.progress.id,
+      aws_api_gateway_resource.presigned_url.id,
       aws_api_gateway_method.get_mission.id,
       aws_api_gateway_integration.get_mission.id,
       aws_api_gateway_method.report_progress.id,
       aws_api_gateway_integration.report_progress.id,
+      aws_api_gateway_method.presigned_url.id,
+      aws_api_gateway_integration.presigned_url.id,
+      aws_api_gateway_method.list_missions.id,
+      aws_api_gateway_integration.list_missions.id,
       aws_api_gateway_method.options_incident.id,
       aws_api_gateway_method.options_progress.id,
+      aws_api_gateway_method.options_presigned_url.id,
+      aws_api_gateway_method.options_incidents.id,
       aws_api_gateway_authorizer.lambda_auth.id,
     ]))
   }
