@@ -140,3 +140,22 @@ resource "aws_cloudwatch_log_resource_policy" "eventbridge_logs" {
   policy_name     = "${var.project_name}-eventbridge-logs"
   policy_document = data.aws_iam_policy_document.eventbridge_logs.json
 }
+
+# ---------------------------------------------------
+# Scheduled Rule: Outbox Processor (every 1 minute)
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_rule" "outbox_processor_schedule" {
+  name                = "${var.project_name}-outbox-processor-schedule"
+  description         = "Trigger outbox-processor Lambda every 1 minute"
+  schedule_expression = "rate(1 minute)"
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_cloudwatch_event_target" "outbox_processor_target" {
+  rule      = aws_cloudwatch_event_rule.outbox_processor_schedule.name
+  target_id = "outbox-processor-lambda"
+  arn       = aws_lambda_function.outbox_processor.arn
+}
