@@ -28,3 +28,21 @@ variable "incident_service_url" {
   type        = string
   default     = "http://localhost:9999"
 }
+
+variable "incident_tracking_sqs_arn" {
+  description = "SQS ARN for IncidentTracking Service consumer"
+  type        = string
+  default     = ""
+}
+
+variable "dispatch_sqs_arn" {
+  description = "SQS ARN for Dispatch Management Service consumer"
+  type        = string
+  default     = ""
+}
+
+variable "prioritization_sqs_arn" {
+  description = "SQS ARN for Prioritization Service consumer"
+  type        = string
+  default     = ""
+}
