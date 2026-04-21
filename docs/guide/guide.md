@@ -1386,12 +1386,12 @@ echo "Image Key: $IMAGE_KEY"
 
 ```bash
 # สร้างไฟล์ทดสอบขนาดเล็ก (ถ้าไม่มีรูปจริง)
-echo "test-image-data" > /tmp/test-photo.jpg
+# echo "test-image-data" > /tmp/test-photo.jpg
 
 # อัปโหลดไฟล์ด้วย PUT
 curl -X PUT \
   -H "Content-Type: image/jpeg" \
-  -T /tmp/test-photo.jpg \
+  -T img/test-photo.jpg \
   "$UPLOAD_URL"
 ```
 
