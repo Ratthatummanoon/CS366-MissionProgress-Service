@@ -161,9 +161,7 @@ export default function DashboardPage() {
               <div
                 key={m.mission_id}
                 onClick={() =>
-                  router.push(
-                    `/mission?id=${encodeURIComponent(m.incident_id)}`,
-                  )
+                  router.push(`/mission?id=${encodeURIComponent(m.request_id)}`)
                 }
                 className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition cursor-pointer"
               >
@@ -171,10 +169,10 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-3">
                     <div>
                       <div className="font-semibold text-gray-900">
-                        {m.incident_id}
+                        {m.request_id}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
-                        Mission: {m.mission_id}
+                        Incident: {m.incident_id} | Mission: {m.mission_id}
                       </div>
                     </div>
                   </div>
