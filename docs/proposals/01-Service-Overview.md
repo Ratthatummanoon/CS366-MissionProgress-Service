@@ -44,7 +44,7 @@ MissionProgress Service คือบริการสำหรับทีม�
 | **Timeline / Action Log Recording** | บันทึก Log การปฏิบัติงานทุกรายการ เช่น เวลาที่ถึงจุดเกิดเหตุ, การกระทำ (Evacuation start, First aid applied), ผู้กระทำ                                                 |
 | **Field Assessment Forwarding**     | รับข้อมูลประเมิน Impact Level / Priority จากทีมกู้ภัยหน้างาน บันทึกเป็น Action Log แล้ว Publish Event ไปยัง IncidentTracking (ผู้เป็นเจ้าของข้อมูล) เพื่ออัปเดตค่าจริง |
 | **Evidence Image Management**       | รับและจัดเก็บหลักฐานภาพถ่ายจากหน้างาน (Evidence Images) ผ่าน S3 Presigned URL พร้อมเชื่อม Image Key กับ Timeline                                                       |
-| **Event Publishing**                | Publish Domain Events (`MissionStatusChangedEvent`, `FieldAssessmentUpdatedEvent`) ไปยัง SNS เพื่อแจ้ง Service อื่นๆ                                                   |
+| **Event Publishing**                | Publish Domain Events (`MissionStatusChanged`, `MissionBackupRequested`, `ImpactLevelUpdated`) ไปยัง Amazon EventBridge เพื่อแจ้ง Service อื่นๆ                        |
 
 ### ❌ Out-of-scope / Not Responsible For (ไม่รับผิดชอบ)
 
