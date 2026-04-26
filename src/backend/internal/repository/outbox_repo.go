@@ -58,6 +58,7 @@ func (r *OutboxRepo) GetPendingOutboxEntries(ctx context.Context) ([]models.Outb
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":status": &types.AttributeValueMemberS{Value: "PENDING"},
 		},
+		Limit: aws.Int32(100), // cap per run to avoid Lambda memory/timeout issues
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query pending outbox entries: %w", err)
