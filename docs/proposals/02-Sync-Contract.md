@@ -8,13 +8,13 @@
 
 ทุก Response จาก MissionProgress Service จะมี Header ดังนี้:
 
-| Header                          | คำอธิบาย                                                                 |
-| :------------------------------ | :----------------------------------------------------------------------- |
-| `Content-Type`                  | `application/json`                                                       |
-| `X-Trace-Id`                    | Unique Trace ID (UUID v4) สำหรับติดตาม request — ใช้อ้างอิงเมื่อแจ้งปัญหา |
-| `Access-Control-Allow-Origin`   | `*`                                                                      |
-| `Access-Control-Allow-Methods`  | `GET,POST,OPTIONS`                                                       |
-| `Access-Control-Allow-Headers`  | `x-api-key,X-Rescue-Team-ID,Content-Type`                               |
+| Header                         | คำอธิบาย                                                                  |
+| :----------------------------- | :------------------------------------------------------------------------ |
+| `Content-Type`                 | `application/json`                                                        |
+| `X-Trace-Id`                   | Unique Trace ID (UUID v4) สำหรับติดตาม request — ใช้อ้างอิงเมื่อแจ้งปัญหา |
+| `Access-Control-Allow-Origin`  | `*`                                                                       |
+| `Access-Control-Allow-Methods` | `GET,POST,OPTIONS`                                                        |
+| `Access-Control-Allow-Headers` | `x-api-key,X-Rescue-Team-ID,Content-Type`                                 |
 
 > ⚠️ **ยกเว้น** `403 Forbidden` ที่ return จาก API Gateway Authorizer โดยตรง — จะไม่มี `X-Trace-Id` เนื่องจากไม่ผ่าน application layer
 
@@ -33,11 +33,11 @@
 }
 ```
 
-| Field     | Type   | คำอธิบาย                                                  |
-| :-------- | :----- | :-------------------------------------------------------- |
-| `error`   | String | Error code สำหรับ programmatic handling                   |
-| `code`    | String | Error code (เหมือน `error`)                               |
-| `message` | String | ข้อความอธิบายปัญหาที่อ่านเข้าใจง่าย                       |
+| Field     | Type   | คำอธิบาย                                                    |
+| :-------- | :----- | :---------------------------------------------------------- |
+| `error`   | String | Error code สำหรับ programmatic handling                     |
+| `code`    | String | Error code (เหมือน `error`)                                 |
+| `message` | String | ข้อความอธิบายปัญหาที่อ่านเข้าใจง่าย                         |
 | `traceId` | String | Trace ID ตัวเดียวกับ `X-Trace-Id` ใน header — ใช้แจ้ง debug |
 
 ---
@@ -48,13 +48,13 @@
 
 ## ข้อมูลทั่วไป
 
-| รายการ     | ค่า                                 |
-| :--------- | :---------------------------------- |
-| **Name**   | `reportMissionProgress`             |
-| **Method** | `POST`                              |
-| **Path**   | `/incidents/{incident_id}/progress` |
-| **Type**   | Synchronous                         |
-| **Lambda** | `report-progress` (Go)              |
+| รายการ     | ค่า                               |
+| :--------- | :-------------------------------- |
+| **Name**   | `reportMissionProgress`           |
+| **Method** | `POST`                            |
+| **Path**   | `/missions/{request_id}/progress` |
+| **Type**   | Synchronous                       |
+| **Lambda** | `report-progress` (Go)            |
 
 ## คำอธิบาย
 
@@ -66,9 +66,9 @@
 
 ### Path Parameters
 
-| Parameter     | Type   | Required | คำอธิบาย                                            |
-| :------------ | :----- | :------: | :-------------------------------------------------- |
-| `incident_id` | String |    ✅    | รหัสเหตุการณ์ที่กำลังปฏิบัติภารกิจ (เช่น `INC-001`) |
+| Parameter    | Type   | Required | คำอธิบาย                                                |
+| :----------- | :----- | :------: | :------------------------------------------------------ |
+| `request_id` | String |    ✅    | รหัส request จาก RescueRequest Service (เช่น `REQ-001`) |
 
 ### Headers
 
@@ -113,7 +113,7 @@ X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
 {
   "message": "Progress reported successfully",
   "mission_id": "MSN-001",
-  "incident_id": "INC-001",
+  "request_id": "REQ-001",
   "old_status": "EN_ROUTE",
   "new_status": "ON_SITE",
   "updated_at": "2025-06-14T09:32:15Z"
@@ -135,8 +135,8 @@ X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
 
 ```json
 {
-  "error": "MISSING_PARAMETER",
-  "code": "MISSING_PARAMETER",
+  "error": "INVALID_REQUEST_BODY",
+  "code": "INVALID_REQUEST_BODY",
   "message": "new_status is required",
   "traceId": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 }
@@ -157,20 +157,20 @@ X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
 
 ```json
 {
-  "error": "INVALID_BODY",
-  "code": "INVALID_BODY",
+  "error": "INVALID_REQUEST_BODY",
+  "code": "INVALID_REQUEST_BODY",
   "message": "Invalid request body",
   "traceId": "d4e5f6a7-b8c9-0123-defa-234567890123"
 }
 ```
 
-### Error `404 Not Found` — ไม่พบ incident_id
+### Error `404 Not Found` — ไม่พบ request_id
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999",
+  "error": "MISSION_NOT_FOUND",
+  "code": "MISSION_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999",
   "traceId": "e5f6a7b8-c9d0-1234-efab-345678901234"
 }
 ```
@@ -227,18 +227,18 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 
 ## ข้อมูลทั่วไป
 
-| รายการ     | ค่า                        |
-| :--------- | :------------------------- |
-| **Name**   | `getMissionDetails`        |
-| **Method** | `GET`                      |
-| **Path**   | `/incidents/{incident_id}` |
-| **Type**   | Synchronous                |
-| **Lambda** | `get-mission` (Go)         |
-| **Demo 1** | ✅ Implemented             |
+| รายการ     | ค่า                      |
+| :--------- | :----------------------- |
+| **Name**   | `getMissionDetails`      |
+| **Method** | `GET`                    |
+| **Path**   | `/missions/{request_id}` |
+| **Type**   | Synchronous              |
+| **Lambda** | `get-mission` (Go)       |
+| **Demo 1** | ✅ Implemented           |
 
 ## คำอธิบาย
 
-ใช้ดึงข้อมูลรายละเอียดของภารกิจ รวมถึง "ประวัติการทำงานทั้งหมด (Timeline)" และ "ข้อมูลเหตุการณ์จาก IncidentTracking Service" (Degraded Mode เมื่อเรียกไม่สำเร็จ) เพื่อให้ทีมกู้ภัยดูย้อนหลังหรือ Dispatcher ตรวจสอบความคืบหน้า
+ใช้ดึงข้อมูลรายละเอียดของภารกิจ รวมถึง "ประวัติการทำงานทั้งหมด (Timeline)" และ "ข้อมูล Request จาก RescueRequest Service" (Degraded Mode เมื่อเรียกไม่สำเร็จ) เพื่อให้ทีมกู้ภัยดูย้อนหลังหรือ Dispatcher ตรวจสอบความคืบหน้า
 
 ---
 
@@ -246,9 +246,9 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 
 ### Path Parameters
 
-| Parameter     | Type   | Required | คำอธิบาย                                   |
-| :------------ | :----- | :------: | :----------------------------------------- |
-| `incident_id` | String |    ✅    | รหัสเหตุการณ์ที่ต้องการดู (เช่น `INC-001`) |
+| Parameter    | Type   | Required | คำอธิบาย                                                |
+| :----------- | :----- | :------: | :------------------------------------------------------ |
+| `request_id` | String |    ✅    | รหัส request จาก RescueRequest Service (เช่น `REQ-001`) |
 
 ### Headers
 
@@ -278,7 +278,7 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 
 ```json
 {
-  "incident_id": "INC-001",
+  "request_id": "REQ-001",
   "mission_id": "MSN-001",
   "rescue_team_id": "TEAM-ALPHA",
   "current_status": "ON_SITE",
@@ -309,11 +309,11 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 }
 ```
 
-### Success `200 OK` — Full Mode (Demo 2+ เมื่อ IncidentTracking พร้อม)
+### Success `200 OK` — Full Mode (Demo 2+ เมื่อ RescueRequest Service พร้อม)
 
 ```json
 {
-  "incident_id": "INC-001",
+  "request_id": "REQ-001",
   "mission_id": "MSN-001",
   "rescue_team_id": "TEAM-ALPHA",
   "current_status": "ON_SITE",
@@ -323,29 +323,29 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
   "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
   "location": "13.7563,100.5018",
   "incident_type": "FLOOD",
-  "timeline": [ "..." ],
+  "timeline": ["..."],
   "data_source": "full"
 }
 ```
 
 ### Field Availability by Mode
 
-| Field                                         | มี Degraded? | มี Full? | Source                   |
-| :-------------------------------------------- | :----------: | :------: | :----------------------- |
-| `incident_id`, `mission_id`, `rescue_team_id` |      ✅      |    ✅    | MissionAssignment table  |
-| `current_status`, `latest_impact_level`       |      ✅      |    ✅    | MissionAssignment table  |
-| `started_at`, `last_updated_at`               |      ✅      |    ✅    | MissionAssignment table  |
-| `timeline`                                    |      ✅      |    ✅    | MissionTimeline table    |
-| `description`, `location`, `incident_type`    |      ❌      |    ✅    | IncidentTracking Service |
-| `data_source`                                 | `"partial"`  | `"full"` | —                        |
+| Field                                        | มี Degraded? | มี Full? | Source                  |
+| :------------------------------------------- | :----------: | :------: | :---------------------- |
+| `request_id`, `mission_id`, `rescue_team_id` |      ✅      |    ✅    | MissionAssignment table |
+| `current_status`, `latest_impact_level`      |      ✅      |    ✅    | MissionAssignment table |
+| `started_at`, `last_updated_at`              |      ✅      |    ✅    | MissionAssignment table |
+| `timeline`                                   |      ✅      |    ✅    | MissionTimeline table   |
+| `description`, `location`, `incident_type`   |      ❌      |    ✅    | RescueRequest Service   |
+| `data_source`                                | `"partial"`  | `"full"` | —                       |
 
 ### Error `404 Not Found`
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999",
+  "error": "MISSION_NOT_FOUND",
+  "code": "MISSION_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999",
   "traceId": "11112222-3333-4444-5555-666677778888"
 }
 ```
@@ -364,11 +364,11 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 
 ## Dependency / Reliability
 
-| ประเภท                   | รายละเอียด                                                                                            |
-| :----------------------- | :---------------------------------------------------------------------------------------------------- |
-| **Internal Data (Read)** | อ่าน MissionAssignment table (state) + MissionTimeline table (timeline เรียงตาม timestamp)            |
-| **External Dependency**  | HTTP GET → IncidentTracking Service เพื่อดึง description, location, incident_type (timeout: 3 วินาที) |
-| **Degraded Mode**        | IncidentTracking ล่ม/timeout → ส่งข้อมูลเฉพาะที่มี → `data_source: "partial"`                         |
+| ประเภท                   | รายละเอียด                                                                                                                                            |
+| :----------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Internal Data (Read)** | อ่าน MissionAssignment table (state) + MissionTimeline table (timeline เรียงตาม timestamp)                                                            |
+| **External Dependency**  | HTTP GET → RescueRequest Service (`GET /v1/rescue-requests/{requestId}`) เพื่อดึง description, location, requestType (timeout: 800ms + retry 2 ครั้ง) |
+| **Degraded Mode**        | RescueRequest Service ล่ม/timeout → ส่งข้อมูลเฉพาะที่มี → `data_source: "partial"`                                                                    |
 
 ---
 
@@ -378,13 +378,13 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 
 ## ข้อมูลทั่วไป
 
-| รายการ     | ค่า                                      |
-| :--------- | :--------------------------------------- |
-| **Name**   | `requestEvidenceUploadURL`               |
-| **Method** | `POST`                                   |
-| **Path**   | `/incidents/{incident_id}/presigned-url` |
-| **Type**   | Synchronous                              |
-| **Lambda** | `presigned-url` (Go)                     |
+| รายการ     | ค่า                                    |
+| :--------- | :------------------------------------- |
+| **Name**   | `requestEvidenceUploadURL`             |
+| **Method** | `POST`                                 |
+| **Path**   | `/missions/{request_id}/presigned-url` |
+| **Type**   | Synchronous                            |
+| **Lambda** | `presigned-url` (Go)                   |
 
 ## คำอธิบาย
 
@@ -395,10 +395,10 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 ## Flow การใช้งาน
 
 ```
-1. Frontend เรียก POST /incidents/{id}/presigned-url → ส่ง file_name + content_type
+1. Frontend เรียก POST /missions/{id}/presigned-url → ส่ง file_name + content_type
 2. Lambda สร้าง Presigned URL (PUT) อายุ 5 นาที → ส่งกลับ upload_url + image_key
 3. Frontend ใช้ upload_url อัปโหลดไฟล์ตรงไป S3 (HTTP PUT)
-4. Frontend ส่ง image_key ไปพร้อม POST /incidents/{id}/progress (เพื่อเชื่อม Evidence กับ Timeline entry)
+4. Frontend ส่ง image_key ไปพร้อม POST /missions/{id}/progress (เพื่อเชื่อม Evidence กับ Timeline entry)
 ```
 
 ---
@@ -407,9 +407,9 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 
 ### Path Parameters
 
-| Parameter     | Type   | Required | คำอธิบาย                                                  |
-| :------------ | :----- | :------: | :-------------------------------------------------------- |
-| `incident_id` | String |    ✅    | รหัสเหตุการณ์ที่ต้องการอัปโหลดรูปหลักฐาน (เช่น `INC-001`) |
+| Parameter    | Type   | Required | คำอธิบาย                                                |
+| :----------- | :----- | :------: | :------------------------------------------------------ |
+| `request_id` | String |    ✅    | รหัส request จาก RescueRequest Service (เช่น `REQ-001`) |
 
 ### Headers
 
@@ -450,8 +450,8 @@ X-Trace-Id: aabb1122-ccdd-3344-eeff-556677889900
 
 ```json
 {
-  "upload_url": "https://s3.amazonaws.com/mission-evidence-bucket/evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
-  "image_key": "evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg",
+  "upload_url": "https://s3.amazonaws.com/mission-evidence-bucket/evidence/MSN-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+  "image_key": "evidence/MSN-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg",
   "expires_in": 300,
   "message": "Presigned URL generated successfully"
 }
@@ -467,10 +467,10 @@ X-Trace-Id: aabb1122-ccdd-3344-eeff-556677889900
 ### S3 Key Format
 
 ```
-evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
+evidence/{mission_id}/{rescue_team_id}/{unix_timestamp}-{file_name}
 ```
 
-> ตัวอย่าง: `evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg`
+> ตัวอย่าง: `evidence/MSN-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg`
 >
 > ใช้ `{unix_timestamp}` เพื่อป้องกันชื่อไฟล์ซ้ำ
 
@@ -478,8 +478,8 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 
 ```json
 {
-  "error": "MISSING_PARAMETER",
-  "code": "MISSING_PARAMETER",
+  "error": "INVALID_REQUEST_BODY",
+  "code": "INVALID_REQUEST_BODY",
   "message": "file_name and content_type are required",
   "traceId": "11aa22bb-33cc-44dd-55ee-66ff77008811"
 }
@@ -496,13 +496,13 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 }
 ```
 
-### Error `404 Not Found` — ไม่พบ incident_id
+### Error `404 Not Found` — ไม่พบ request_id
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999",
+  "error": "MISSION_NOT_FOUND",
+  "code": "MISSION_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999",
   "traceId": "33cc44dd-55ee-66ff-7788-009911223344"
 }
 ```
@@ -526,7 +526,7 @@ evidence/{incident_id}/{team_id}/{unix_timestamp}-{file_name}
 curl -X PUT \
   -H "Content-Type: image/jpeg" \
   --data-binary @flood-evidence-001.jpg \
-  "https://s3.amazonaws.com/mission-evidence-bucket/evidence/INC-001/...?X-Amz-Algorithm=..."
+  "https://s3.amazonaws.com/mission-evidence-bucket/evidence/REQ-001/...?X-Amz-Algorithm=..."
 
 # HTTP 200 = อัปโหลดสำเร็จ
 
@@ -538,9 +538,9 @@ curl -X POST \
   -d '{
     "new_status": "ON_SITE",
     "note": "ถึงจุดเกิดเหตุ น้ำสูง 1.2m",
-    "image_key": "evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg"
+    "image_key": "evidence/MSN-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg"
   }' \
-  "$API_URL/incidents/INC-001/progress"
+  "$API_URL/missions/REQ-001/progress"
 ```
 
 ---
@@ -549,7 +549,7 @@ curl -X POST \
 
 | ประเภท                   | รายละเอียด                                                                                   |
 | :----------------------- | :------------------------------------------------------------------------------------------- |
-| **Internal Data (Read)** | ตรวจสอบว่า incident_id มี Mission อยู่ใน MissionAssignment table                             |
+| **Internal Data (Read)** | ตรวจสอบว่า request_id มี Mission อยู่ใน MissionAssignment table                              |
 | **AWS S3**               | สร้าง Presigned URL (PUT) ด้วย AWS SDK — ไม่ได้ upload ไฟล์จริงใน step นี้                   |
 | **Validation**           | ตรวจสอบ file_name ไม่ว่าง, content_type เป็นรูปภาพที่รองรับ (`jpeg`/`png`/`webp`)            |
 | **Security**             | Presigned URL อายุ 5 นาที → หมดอายุแล้วใช้ไม่ได้ ต้องขอใหม่                                  |
@@ -567,13 +567,13 @@ curl -X POST \
 | :--------- | :---------------------------------------------------------------- |
 | **Name**   | `listTeamMissions`                                                |
 | **Method** | `GET`                                                             |
-| **Path**   | `/incidents`                                                      |
+| **Path**   | `/missions`                                                       |
 | **Type**   | Synchronous                                                       |
 | **Lambda** | `get-mission` (Go) — เพิ่ม handler path ใหม่ หรือ แยก Lambda ใหม่ |
 
 ## คำอธิบาย
 
-ใช้ดึง รายการภารกิจทั้งหมด ของทีมกู้ภัยที่ระบุ เพื่อให้ทีมกู้ภัยเห็นภาพรวมว่าตัวเองมีกี่ภารกิจ แต่ละภารกิจอยู่สถานะอะไร → กดเข้าไปดู Timeline ละเอียดด้วย `GET /incidents/{incident_id}` ต่อได้
+ใช้ดึง รายการภารกิจทั้งหมด ของทีมกู้ภัยที่ระบุ เพื่อให้ทีมกู้ภัยเห็นภาพรวมว่าตัวเองมีกี่ภารกิจ แต่ละภารกิจอยู่สถานะอะไร → กดเข้าไปดู Timeline ละเอียดด้วย `GET /missions/{request_id}` ต่อได้
 
 ## Use Cases
 
@@ -609,12 +609,12 @@ curl -X POST \
 # ดึงภารกิจทั้งหมดของ TEAM-ALPHA
 curl -s -H "x-api-key: $API_KEY" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
-  "$API_URL/incidents?team_id=TEAM-ALPHA" | jq .
+  "$API_URL/missions?team_id=TEAM-ALPHA" | jq .
 
 # ดึงเฉพาะภารกิจที่สถานะ ON_SITE
 curl -s -H "x-api-key: $API_KEY" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
-  "$API_URL/incidents?team_id=TEAM-ALPHA&status=ON_SITE" | jq .
+  "$API_URL/missions?team_id=TEAM-ALPHA&status=ON_SITE" | jq .
 ```
 
 ---
@@ -639,7 +639,7 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
   "missions": [
     {
       "mission_id": "MSN-001",
-      "incident_id": "INC-001",
+      "request_id": "REQ-001",
       "current_status": "ON_SITE",
       "latest_impact_level": 3,
       "started_at": "2024-12-01T08:00:00Z",
@@ -647,7 +647,7 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
     },
     {
       "mission_id": "MSN-003",
-      "incident_id": "INC-003",
+      "request_id": "REQ-003",
       "current_status": "NEED_BACKUP",
       "latest_impact_level": 5,
       "started_at": "2025-06-14T07:00:00Z",
@@ -655,7 +655,7 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
     },
     {
       "mission_id": "MSN-005",
-      "incident_id": "INC-005",
+      "request_id": "REQ-005",
       "current_status": "RESOLVED",
       "latest_impact_level": 2,
       "started_at": "2025-06-13T14:00:00Z",
@@ -671,7 +671,7 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
 | `total_missions`                 | Integer           | จำนวนภารกิจทั้งหมดที่พบ             |
 | `missions`                       | Array             | รายการภารกิจ (สรุป ไม่รวม Timeline) |
 | `missions[].mission_id`          | String            | รหัสภารกิจ                          |
-| `missions[].incident_id`         | String            | รหัสเหตุการณ์                       |
+| `missions[].request_id`          | String            | รหัสเหตุการณ์                       |
 | `missions[].current_status`      | String            | สถานะปัจจุบัน                       |
 | `missions[].latest_impact_level` | Integer           | ระดับความรุนแรงล่าสุด               |
 | `missions[].started_at`          | String (ISO 8601) | เวลาเริ่มภารกิจ                     |
@@ -696,7 +696,7 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
   "missions": [
     {
       "mission_id": "MSN-001",
-      "incident_id": "INC-001",
+      "request_id": "REQ-001",
       "current_status": "ON_SITE",
       "latest_impact_level": 3,
       "started_at": "2024-12-01T08:00:00Z",
@@ -710,8 +710,8 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
 
 ```json
 {
-  "error": "MISSING_PARAMETER",
-  "code": "MISSING_PARAMETER",
+  "error": "INVALID_REQUEST_BODY",
+  "code": "INVALID_REQUEST_BODY",
   "message": "team_id query parameter is required",
   "traceId": "44556677-8899-aabb-ccdd-eeff00112233"
 }
@@ -766,6 +766,5 @@ GSI: team-index
 | **Validation**             | ตรวจสอบ team_id ไม่ว่าง, status (ถ้ามี) เป็นค่าที่ถูกต้อง                              |
 | **Performance**            | GSI query = single-digit ms / Filter Expression ทำที่ DynamoDB → ไม่กระทบ Lambda       |
 | **Empty Result**           | ไม่พบภารกิจ → return `200 OK` พร้อม `missions: []` (ไม่ใช่ 404)                        |
-
 
 ---
