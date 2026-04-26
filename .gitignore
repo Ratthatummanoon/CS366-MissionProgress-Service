@@ -61,3 +61,5 @@ override.tf.json
 # ==========================================
 # Go build artifacts 
 terraform/build/
+
+docs/dependency services
