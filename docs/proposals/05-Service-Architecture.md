@@ -8,7 +8,7 @@
 graph TD
     %% --- External ---
     User((Rescue<br>Team))
-    IncidentAPI["IncidentTracking<br>Service<br>(Mock in Demo 1)"]
+    RescueReqAPI["RescueRequest<br>Service<br>(Demo 2+)"]
     ExtLog["CloudWatch Logs<br>(Demo 1 Target)"]
 
     %% --- Internal Service ---
@@ -41,14 +41,14 @@ graph TD
     AGW -->|"Verify API Key<br>+ Team ID"| Auth
     Auth -->|"Allow / Deny"| AGW
 
-    %% --- GET /incidents/{id} ---
-    AGW -->|"GET /incidents/{id}"| GetLambda
+    %% --- GET /missions/{request_id} ---
+    AGW -->|"GET /missions/{request_id}"| GetLambda
     GetLambda -->|"1. Read Mission State"| DB_Assign
     GetLambda -->|"2. Read Timeline"| DB_Timeline
-    GetLambda -.->|"3. HTTP GET<br>(Degraded Mode)"| IncidentAPI
+    GetLambda -.->|"3. HTTP GET<br>(Degraded Mode)"| RescueReqAPI
 
-    %% --- POST /incidents/{id}/progress ---
-    AGW -->|"POST /incidents/{id}/progress"| PostLambda
+    %% --- POST /missions/{request_id}/progress ---
+    AGW -->|"POST /missions/{request_id}/progress"| PostLambda
     PostLambda -->|"4. Update State"| DB_Assign
     PostLambda -->|"5. Add Timeline Entry"| DB_Timeline
     PostLambda -->|"6. Publish Events"| EB
@@ -57,13 +57,13 @@ graph TD
     %% --- EventBridge ---
     EB -->|"3 Rules"| ExtLog
 
-    %% --- Demo 2+: POST /incidents/{id}/presigned-url ---
-    AGW -.->|"POST /incidents/{id}/presigned-url"| PresignLambda
+    %% --- Demo 2+: POST /missions/{request_id}/presigned-url ---
+    AGW -.->|"POST /missions/{request_id}/presigned-url"| PresignLambda
     PresignLambda -.->|"Verify Mission Exists"| DB_Assign
     PresignLambda -.->|"Generate Presigned URL"| Storage
 
-    %% --- Demo 2+: GET /incidents?team_id= ---
-    AGW -.->|"GET /incidents?team_id="| ListLambda
+    %% --- Demo 2+: GET /missions?team_id= ---
+    AGW -.->|"GET /missions?team_id="| ListLambda
     ListLambda -.->|"Query GSI team-index"| DB_Assign
 
     %% --- Demo 2+ Frontend flows ---
@@ -84,7 +84,7 @@ graph TD
     style DB_Outbox fill:#fff9c4,stroke:#f9a825,stroke-width:2px
     style EB fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
     style ExtLog fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1px
-    style IncidentAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
+    style RescueReqAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
     style UI fill:#eceff1,stroke:#607d8b,stroke-width:1px,stroke-dasharray: 5 5
     style Storage fill:#fff3e0,stroke:#f57c00,stroke-width:1px,stroke-dasharray: 5 5
     style PresignLambda fill:#f9f9f9,stroke:#999,stroke-width:1px,stroke-dasharray: 5 5
@@ -105,12 +105,12 @@ graph TD
 
 ### Routes
 
-| Method | Path                          | Target Lambda   |
-| ------ | ----------------------------- | --------------- |
-| GET    | /incidents/{id}               | get-mission     |
-| POST   | /incidents/{id}/progress      | report-progress |
-| POST   | /incidents/{id}/presigned-url | presigned-url   |
-| GET    | /incidents?team_id={id}       | list-missions   |
+| Method | Path                                 | Target Lambda   |
+| ------ | ------------------------------------ | --------------- |
+| GET    | /missions/{request_id}               | get-mission     |
+| POST   | /missions/{request_id}/progress      | report-progress |
+| POST   | /missions/{request_id}/presigned-url | presigned-url   |
+| GET    | /missions?team_id={id}               | list-missions   |
 
 ---
 
@@ -138,7 +138,7 @@ graph TD
 ### หน้าที่
 
 - ดึง Mission State + Timeline
-- เรียก IncidentTracking Service
+- เรียก RescueRequest Service
 
 ### Behavior
 
@@ -147,7 +147,7 @@ graph TD
 | เรียก Service สำเร็จ | `data_source: full`    |
 | ล้มเหลว (timeout)    | `data_source: partial` |
 
-> ⚠️ Demo 1: Mock → timeout → Degraded Mode เสมอ
+> ⚠️ Demo 1: ยังไม่เชื่อม RescueRequest Service → Degraded Mode เสมอ
 
 ---
 
@@ -173,16 +173,16 @@ graph TD
 
 ### Tables
 
-| Table             | PK         | SK         | Purpose                       |
-| ----------------- | ---------- | ---------- | ----------------------------- |
-| MissionAssignment | mission_id | —          | สถานะปัจจุบัน                 |
-| MissionTimeline   | mission_id | timestamp  | Timeline                      |
-| EventOutbox       | outbox_id  | created_at | Retry events (Outbox Pattern) |
+| Table             | PK         | GSI                                                                                         |
+| ----------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| MissionAssignment | mission_id | `request-index` (request_id), `team-index` (rescue_team_id), `incident-index` (incident_id) |
+| MissionTimeline   | mission_id | SK: timestamp                                                                               |
+| EventOutbox       | outbox_id  | SK: created_at                                                                              |
 
 ### Notes
 
 - ใช้ **On-Demand (PAY_PER_REQUEST)**
-- มี GSI: `team-index` สำหรับ list missions
+- มี GSI: `request-index` สำหรับ lookup ด้วย request_id, `team-index` สำหรับ list missions
 
 ---
 
@@ -203,18 +203,24 @@ graph TD
 
 ---
 
-## **7. IncidentTracking Service**
+## **7. RescueRequest Service (External)**
 
 ### หน้าที่
 
-- ให้ข้อมูล Incident (description, location, type)
+- ให้ข้อมูล Request (description, location, requestType, peopleCount)
+- เป็น Source of Truth ของ Rescue Request
 
 ### Behavior
 
-| Demo | Behavior                       |
-| ---- | ------------------------------ |
-| 1    | Mock → timeout → Degraded Mode |
-| 2+   | ใช้ service จริง → Full Mode   |
+| Demo | Behavior                                                 |
+| ---- | -------------------------------------------------------- |
+| 1    | ยังไม่เชื่อมต่อ → Degraded Mode (`data_source: partial`) |
+| 2+   | ใช้ service จริง → Full Mode (`data_source: full`)       |
+
+### External Dependencies (get-mission Lambda)
+
+> - **RescueRequest Service** (sync, Degraded Mode): `GET /v1/rescue-requests/{requestId}` — ดึง description/location/requestType
+> - ~~IncidentTracking Service (sync)~~ — ยกเลิก synchronous call แล้ว (ยังรับ async events อยู่)
 
 ---
 
@@ -298,7 +304,7 @@ graph TD
 
 ## **2. GET Flow — Mission + Timeline**
 
-- GET `/incidents/{id}`
+- GET `/missions/{request_id}`
 - ดึง:
   - MissionAssignment
   - MissionTimeline
