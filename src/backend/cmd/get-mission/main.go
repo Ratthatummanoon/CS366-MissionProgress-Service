@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -17,9 +18,11 @@ import (
 )
 
 var (
-	missionRepo    *repository.MissionRepo
-	timelineRepo   *repository.TimelineRepo
-	incidentClient *client.IncidentClient
+	missionRepo          *repository.MissionRepo
+	timelineRepo         *repository.TimelineRepo
+	rescueRequestClient  *client.RescueRequestClient
+	manageDispatchClient *client.ManageDispatchClient
+	rescueTeamClient     *client.RescueTeamClient
 )
 
 func init() {
@@ -34,39 +37,103 @@ func init() {
 
 	missionRepo = repository.NewMissionRepo(ddbClient, tableMission)
 	timelineRepo = repository.NewTimelineRepo(ddbClient, tableTimeline)
-	incidentClient = client.NewIncidentClient()
+	rescueRequestClient = client.NewRescueRequestClient()
+	manageDispatchClient = client.NewManageDispatchClient()
+	rescueTeamClient = client.NewRescueTeamClient()
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// 1. Parse incident_id from path
-	incidentID := request.PathParameters["incident_id"]
-	if incidentID == "" {
-		return response.Error(400, "MISSING_PARAMETER", "incident_id is required"), nil
+	// 1. Parse request_id from path
+	requestID := request.PathParameters["request_id"]
+	if requestID == "" {
+		return response.Error(400, "MISSING_PARAMETER", "request_id is required"), nil
 	}
 
-	// 2. Query mission by incident_id
-	mission, err := missionRepo.GetMissionByIncidentID(ctx, incidentID)
+	// 2. Query mission by request_id
+	mission, err := missionRepo.GetMissionByRequestID(ctx, requestID)
 	if err != nil {
 		log.Printf("ERROR: query mission: %v", err)
 		return response.Error(500, "INTERNAL_ERROR", "Failed to query mission"), nil
 	}
 	if mission == nil {
-		return response.Error(404, "INCIDENT_NOT_FOUND", "No mission found for incident: "+incidentID), nil
+		return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request: "+requestID), nil
 	}
 
-	// 3. Call IncidentTracking Service (degraded mode on failure)
-	dataSource := "full"
-	var description, location, incidentType string
+	// 3. Call all external services in parallel (degraded mode on failure)
+	// Sequential calls would take up to ~8s worst-case; parallel reduces it to ~2.7s.
+	var (
+		dataSource   = "full"
+		description  string
+		location     string
+		incidentType string
 
-	incidentDetail := incidentClient.GetIncidentDetail(incidentID)
-	if incidentDetail != nil {
-		description = incidentDetail.Description
-		location = incidentDetail.Location
-		incidentType = incidentDetail.IncidentType
-	} else {
-		dataSource = "partial"
-		log.Printf("INFO: IncidentTracking unavailable - returning partial data for %s", incidentID)
-	}
+		dispatchStatus string
+		priorityLevel  int
+
+		teamName     string
+		teamType     string
+		capabilities []string
+		equipment    []string
+		teamLocation *models.TeamLocationSnap
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	// 3a. RescueRequest Service — fetch request description/location/type
+	go func() {
+		defer wg.Done()
+		requestDetail := rescueRequestClient.GetRequestDetail(ctx, requestID)
+		if requestDetail != nil {
+			description = requestDetail.Master.Description
+			location = client.FormatLocation(requestDetail.Master)
+			incidentType = requestDetail.Master.RequestType
+		} else {
+			dataSource = "partial"
+			log.Printf("INFO: RescueRequestService unavailable - returning partial data for requestID=%s", requestID)
+		}
+	}()
+
+	// 3b. ManageDispatch Service — fetch dispatch status/priority
+	go func() {
+		defer wg.Done()
+		if mission.DispatchID == "" {
+			return
+		}
+		dispatchList := manageDispatchClient.GetDispatchByTeamAndRequest(ctx, mission.RescueTeamID)
+		if dispatchList != nil {
+			for _, item := range dispatchList.Items {
+				if item.DispatchID == mission.DispatchID {
+					dispatchStatus = item.Status
+					priorityLevel = item.PriorityLevel
+					break
+				}
+			}
+		} else {
+			log.Printf("INFO: ManageDispatchService unavailable - skipping dispatch enrichment for missionID=%s", mission.MissionID)
+		}
+	}()
+
+	// 3c. RescueTeam Service — fetch team info
+	go func() {
+		defer wg.Done()
+		teamDetail := rescueTeamClient.GetTeamDetail(ctx, mission.RescueTeamID)
+		if teamDetail != nil {
+			teamName = teamDetail.TeamName
+			teamType = teamDetail.TeamType
+			capabilities = teamDetail.Capabilities
+			equipment = teamDetail.Equipment
+			teamLocation = &models.TeamLocationSnap{
+				Lat: teamDetail.Location.Lat,
+				Lng: teamDetail.Location.Lng,
+			}
+		} else {
+			log.Printf("INFO: RescueTeamService unavailable - returning partial team data for teamID=%s", mission.RescueTeamID)
+			dataSource = "partial"
+		}
+	}()
+
+	wg.Wait()
 
 	// 4. Query timeline entries sorted by timestamp
 	timeline, err := timelineRepo.GetTimelineByMissionID(ctx, mission.MissionID)
@@ -80,9 +147,18 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 	// 5. Return combined response
 	return response.JSON(200, models.GetMissionResponse{
+		RequestID:         mission.RequestID,
 		IncidentID:        mission.IncidentID,
 		MissionID:         mission.MissionID,
+		DispatchID:        mission.DispatchID,
 		RescueTeamID:      mission.RescueTeamID,
+		TeamName:          teamName,
+		TeamType:          teamType,
+		Capabilities:      capabilities,
+		Equipment:         equipment,
+		TeamLocation:      teamLocation,
+		PriorityLevel:     priorityLevel,
+		DispatchStatus:    dispatchStatus,
 		CurrentStatus:     mission.CurrentStatus,
 		LatestImpactLevel: mission.LatestImpactLevel,
 		StartedAt:         mission.StartedAt,
