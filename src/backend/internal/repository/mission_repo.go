@@ -24,34 +24,6 @@ func NewMissionRepo(client *dynamodb.Client, tableName string) *MissionRepo {
 	return &MissionRepo{client: client, tableName: tableName}
 }
 
-// GetMissionByIncidentID queries the incident-index GSI for a mission.
-func (r *MissionRepo) GetMissionByIncidentID(ctx context.Context, incidentID string) (*models.MissionAssignment, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	output, err := r.client.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		IndexName:              aws.String("incident-index"),
-		KeyConditionExpression: aws.String("incident_id = :iid"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":iid": &types.AttributeValueMemberS{Value: incidentID},
-		},
-		Limit: aws.Int32(1),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("query mission by incident_id: %w", err)
-	}
-	if len(output.Items) == 0 {
-		return nil, nil
-	}
-
-	var mission models.MissionAssignment
-	if err := attributevalue.UnmarshalMap(output.Items[0], &mission); err != nil {
-		return nil, fmt.Errorf("unmarshal mission: %w", err)
-	}
-	return &mission, nil
-}
-
 // UpdateMissionStatus updates the current_status, latest_impact_level, and last_updated_at.
 func (r *MissionRepo) UpdateMissionStatus(ctx context.Context, mission *models.MissionAssignment) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -94,24 +66,61 @@ func (r *MissionRepo) CreateMission(ctx context.Context, mission *models.Mission
 	return nil
 }
 
-// CreateMissionIdempotent inserts a new mission only if mission_id does not already exist.
-func (r *MissionRepo) CreateMissionIdempotent(ctx context.Context, mission *models.MissionAssignment) error {
-	item, err := attributevalue.MarshalMap(mission)
-	if err != nil {
-		return fmt.Errorf("marshal mission: %w", err)
-	}
+// GetMissionByRequestID queries the request-index GSI for a mission.
+func (r *MissionRepo) GetMissionByRequestID(ctx context.Context, requestID string) (*models.MissionAssignment, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.tableName),
-		Item:                item,
-		ConditionExpression: aws.String("attribute_not_exists(mission_id)"),
+	output, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("request-index"),
+		KeyConditionExpression: aws.String("request_id = :rid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":rid": &types.AttributeValueMemberS{Value: requestID},
+		},
+		Limit: aws.Int32(1),
 	})
 	if err != nil {
-		return fmt.Errorf("put mission (idempotent): %w", err)
+		return nil, fmt.Errorf("query mission by request_id: %w", err)
 	}
-	return nil
+	if len(output.Items) == 0 {
+		return nil, nil
+	}
+
+	var mission models.MissionAssignment
+	if err := attributevalue.UnmarshalMap(output.Items[0], &mission); err != nil {
+		return nil, fmt.Errorf("unmarshal mission: %w", err)
+	}
+	return &mission, nil
+}
+
+// GetMissionByDispatchID queries the dispatch-index GSI for a mission by dispatch_id.
+// Used for idempotency check in mission-assigned-handler.
+func (r *MissionRepo) GetMissionByDispatchID(ctx context.Context, dispatchID string) (*models.MissionAssignment, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	output, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		IndexName:              aws.String("dispatch-index"),
+		KeyConditionExpression: aws.String("dispatch_id = :did"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":did": &types.AttributeValueMemberS{Value: dispatchID},
+		},
+		Limit: aws.Int32(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query mission by dispatch_id: %w", err)
+	}
+	if len(output.Items) == 0 {
+		return nil, nil
+	}
+
+	var mission models.MissionAssignment
+	if err := attributevalue.UnmarshalMap(output.Items[0], &mission); err != nil {
+		return nil, fmt.Errorf("unmarshal mission: %w", err)
+	}
+	return &mission, nil
 }
 
 // GetMissionsByTeamID queries the team-index GSI for all missions of a team.
