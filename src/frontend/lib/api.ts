@@ -36,22 +36,22 @@ class ApiClient {
     return body as T;
   }
 
-  async getMission(incidentId: string): Promise<MissionDetailResponse> {
+  async getMission(requestId: string): Promise<MissionDetailResponse> {
     return this.request<MissionDetailResponse>(
-      `/incidents/${encodeURIComponent(incidentId)}`,
+      `/missions/${encodeURIComponent(requestId)}`,
       { headers: this.headers() },
     );
   }
 
   async listMissions(status?: string): Promise<ListMissionsResponse> {
     const params = status ? `?status=${encodeURIComponent(status)}` : "";
-    return this.request<ListMissionsResponse>(`/incidents${params}`, {
+    return this.request<ListMissionsResponse>(`/missions${params}`, {
       headers: this.headers(),
     });
   }
 
   async reportProgress(
-    incidentId: string,
+    requestId: string,
     body: {
       new_status: string;
       note?: string;
@@ -61,7 +61,7 @@ class ApiClient {
     },
   ): Promise<ProgressResponse> {
     return this.request<ProgressResponse>(
-      `/incidents/${encodeURIComponent(incidentId)}/progress`,
+      `/missions/${encodeURIComponent(requestId)}/progress`,
       {
         method: "POST",
         headers: this.headers(true),
@@ -71,12 +71,12 @@ class ApiClient {
   }
 
   async getPresignedUrl(
-    incidentId: string,
+    requestId: string,
     fileName: string,
     contentType: string,
   ): Promise<PresignedURLResponse> {
     return this.request<PresignedURLResponse>(
-      `/incidents/${encodeURIComponent(incidentId)}/presigned-url`,
+      `/missions/${encodeURIComponent(requestId)}/presigned-url`,
       {
         method: "POST",
         headers: this.headers(true),
