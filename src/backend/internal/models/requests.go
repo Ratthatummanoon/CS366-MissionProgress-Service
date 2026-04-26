@@ -13,26 +13,42 @@ type ReportProgressRequest struct {
 type ReportProgressResponse struct {
 	Message    string `json:"message"`
 	MissionID  string `json:"mission_id"`
+	RequestID  string `json:"request_id"`
 	IncidentID string `json:"incident_id"`
 	OldStatus  string `json:"old_status"`
 	NewStatus  string `json:"new_status"`
 	UpdatedAt  string `json:"updated_at"`
 }
 
-// GetMissionResponse is the response for GET /incidents/{id}.
+// TeamLocationSnap คือ snapshot ตำแหน่งทีมที่ embed ใน GetMissionResponse
+type TeamLocationSnap struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+// GetMissionResponse is the response for GET /missions/{request_id}.
 type GetMissionResponse struct {
-	IncidentID        string          `json:"incident_id"`
-	MissionID         string          `json:"mission_id"`
-	RescueTeamID      string          `json:"rescue_team_id"`
-	CurrentStatus     string          `json:"current_status"`
-	LatestImpactLevel int             `json:"latest_impact_level"`
-	StartedAt         string          `json:"started_at"`
-	LastUpdatedAt     string          `json:"last_updated_at"`
-	Description       string          `json:"description,omitempty"`
-	Location          string          `json:"location,omitempty"`
-	IncidentType      string          `json:"incident_type,omitempty"`
-	Timeline          []TimelineEntry `json:"timeline"`
-	DataSource        string          `json:"data_source"`
+	RequestID         string            `json:"request_id"`
+	IncidentID        string            `json:"incident_id"`
+	MissionID         string            `json:"mission_id"`
+	DispatchID        string            `json:"dispatch_id,omitempty"`
+	RescueTeamID      string            `json:"rescue_team_id"`
+	TeamName          string            `json:"team_name,omitempty"`
+	TeamType          string            `json:"team_type,omitempty"`
+	Capabilities      []string          `json:"capabilities,omitempty"`
+	Equipment         []string          `json:"equipment,omitempty"`
+	TeamLocation      *TeamLocationSnap `json:"team_location,omitempty"`
+	PriorityLevel     int               `json:"priority_level,omitempty"`
+	DispatchStatus    string            `json:"dispatch_status,omitempty"`
+	CurrentStatus     string            `json:"current_status"`
+	LatestImpactLevel int               `json:"latest_impact_level"`
+	StartedAt         string            `json:"started_at"`
+	LastUpdatedAt     string            `json:"last_updated_at"`
+	Description       string            `json:"description,omitempty"`
+	Location          string            `json:"location,omitempty"`
+	IncidentType      string            `json:"incident_type,omitempty"`
+	Timeline          []TimelineEntry   `json:"timeline"`
+	DataSource        string            `json:"data_source"`
 }
 
 // ErrorResponse is a standard error response.
@@ -62,4 +78,19 @@ type ListMissionsResponse struct {
 	TeamID        string              `json:"team_id"`
 	TotalMissions int                 `json:"total_missions"`
 	Missions      []MissionAssignment `json:"missions"`
+}
+
+// DispatchItem คือข้อมูลคำสั่งการ 1 รายการจาก Manage Dispatch Service
+type DispatchItem struct {
+	DispatchID    string `json:"dispatchId"`
+	RequestID     string `json:"requestId"`
+	Status        string `json:"status"`
+	PriorityLevel int    `json:"priorityLevel"`
+	DispatchedAt  string `json:"dispatchedAt"`
+}
+
+// DispatchListResponse คือ response จาก GET /v1/dispatches?teamId=...
+type DispatchListResponse struct {
+	TeamID string         `json:"teamId"`
+	Items  []DispatchItem `json:"items"`
 }
