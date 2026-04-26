@@ -13,8 +13,11 @@ echo "--- Inserting MissionAssignment records ---"
 # Mission 1: DISPATCHED
 aws dynamodb put-item --region "$REGION" --table-name MissionAssignment --item '{
   "mission_id": {"S": "MSN-001"},
+  "dispatch_id": {"S": "DSP-00001"},
+  "request_id": {"S": "REQ-001"},
   "incident_id": {"S": "INC-001"},
   "rescue_team_id": {"S": "TEAM-ALPHA"},
+  "priority_level": {"N": "1"},
   "current_status": {"S": "DISPATCHED"},
   "latest_impact_level": {"N": "2"},
   "started_at": {"S": "2024-12-01T08:00:00Z"},
@@ -25,8 +28,11 @@ echo "  Inserted MSN-001 (DISPATCHED)"
 # Mission 2: EN_ROUTE
 aws dynamodb put-item --region "$REGION" --table-name MissionAssignment --item '{
   "mission_id": {"S": "MSN-002"},
+  "dispatch_id": {"S": "DSP-00002"},
+  "request_id": {"S": "REQ-002"},
   "incident_id": {"S": "INC-002"},
   "rescue_team_id": {"S": "TEAM-BRAVO"},
+  "priority_level": {"N": "2"},
   "current_status": {"S": "EN_ROUTE"},
   "latest_impact_level": {"N": "3"},
   "started_at": {"S": "2024-12-01T09:00:00Z"},
@@ -37,8 +43,11 @@ echo "  Inserted MSN-002 (EN_ROUTE)"
 # Mission 3: ON_SITE
 aws dynamodb put-item --region "$REGION" --table-name MissionAssignment --item '{
   "mission_id": {"S": "MSN-003"},
+  "dispatch_id": {"S": "DSP-00003"},
+  "request_id": {"S": "REQ-003"},
   "incident_id": {"S": "INC-003"},
   "rescue_team_id": {"S": "TEAM-CHARLIE"},
+  "priority_level": {"N": "3"},
   "current_status": {"S": "ON_SITE"},
   "latest_impact_level": {"N": "4"},
   "started_at": {"S": "2024-12-01T07:30:00Z"},
@@ -49,8 +58,11 @@ echo "  Inserted MSN-003 (ON_SITE)"
 # Mission 4: NEED_BACKUP
 aws dynamodb put-item --region "$REGION" --table-name MissionAssignment --item '{
   "mission_id": {"S": "MSN-004"},
+  "dispatch_id": {"S": "DSP-00004"},
+  "request_id": {"S": "REQ-004"},
   "incident_id": {"S": "INC-004"},
   "rescue_team_id": {"S": "TEAM-DELTA"},
+  "priority_level": {"N": "2"},
   "current_status": {"S": "NEED_BACKUP"},
   "latest_impact_level": {"N": "4"},
   "started_at": {"S": "2024-12-01T06:00:00Z"},
@@ -61,8 +73,11 @@ echo "  Inserted MSN-004 (NEED_BACKUP)"
 # Mission 5: RESOLVED
 aws dynamodb put-item --region "$REGION" --table-name MissionAssignment --item '{
   "mission_id": {"S": "MSN-005"},
+  "dispatch_id": {"S": "DSP-00005"},
+  "request_id": {"S": "REQ-005"},
   "incident_id": {"S": "INC-005"},
   "rescue_team_id": {"S": "TEAM-ECHO"},
+  "priority_level": {"N": "1"},
   "current_status": {"S": "RESOLVED"},
   "latest_impact_level": {"N": "1"},
   "started_at": {"S": "2024-12-01T05:00:00Z"},
