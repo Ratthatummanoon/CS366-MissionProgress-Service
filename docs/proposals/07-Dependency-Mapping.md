@@ -24,11 +24,13 @@
 
 ### Interaction
 
-| ทิศทาง      | ช่องทาง                          | รายละเอียด                                                           | Demo 1                      | Demo 2+           |
-| ----------- | -------------------------------- | -------------------------------------------------------------------- | --------------------------- | ----------------- |
-| ขาออก Sync  | HTTP GET /incidents/{id}         | ดึงข้อมูล Incident (ล้มเหลว → Degraded Mode, `data_source: partial`) | ⚠️ Mock (timeout → partial) | ✅ URL จริง [TBD] |
-| ขาออก Async | EventBridge MissionStatusChanged | อัปเดตสถานะ Incident                                                 | ✅ → CloudWatch Logs        | 🔜 → Service จริง |
-| ขาออก Async | EventBridge ImpactLevelUpdated   | อัปเดต Impact Level                                                  | ✅ → CloudWatch Logs        | 🔜 → Service จริง |
+| ทิศทาง         | ช่องทาง                             | รายละเอียด                                                   | Demo 1                          | Demo 2+               |
+| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------- | --------------------- |
+| ~~ขาออก Sync~~ | ~~HTTP GET /missions/{request_id}~~ | ~~ดึงข้อมูล Incident~~ → ย้ายไปใช้ RescueRequest Service แทน | ~~⚠️ Mock (timeout → partial)~~ | ~~✅ URL จริง [TBD]~~ |
+| ขาออก Async    | EventBridge MissionStatusChanged    | อัปเดตสถานะ Incident                                         | ✅ → CloudWatch Logs            | 🔜 → Service จริง     |
+| ขาออก Async    | EventBridge ImpactLevelUpdated      | อัปเดต Impact Level                                          | ✅ → CloudWatch Logs            | 🔜 → Service จริง     |
+
+> **หมายเหตุ:** Synchronous call ออก IncidentTracking ถูกยกเลิกแล้ว — ข้อมูล description/location/type ดึงมาจาก RescueRequest Service แทน (เพราะ RescueRequest Service เป็นเจ้าของ request context)
 
 ---
 
@@ -64,11 +66,12 @@
 
 ### Interaction
 
-| ทิศทาง       | ช่องทาง                          | รายละเอียด                    | Demo 1             | Demo 2+ |
-| ------------ | -------------------------------- | ----------------------------- | ------------------ | ------- |
-| ขาเข้า Async | EventBridge MissionAssignedEvent | สร้าง Mission Record          | ❌ Seed Data       | 🔜      |
-| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อกทีม (BUSY → AVAILABLE) | ✅ CloudWatch Logs | 🔜      |
-| ขาเข้า Sync  | GET /incidents/{id}              | ดู Timeline + รูปภาพ          | [TBD]              | [TBD]   |
+| ทิศทาง       | ช่องทาง                          | รายละเอียด                                            | Demo 1             | Demo 2+ |
+| ------------ | -------------------------------- | ----------------------------------------------------- | ------------------ | ------- |
+| ขาเข้า Async | EventBridge MissionAssignedEvent | สร้าง Mission Record                                  | ❌ Seed Data       | 🔜      |
+| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อกทีม (BUSY → AVAILABLE)                         | ✅ CloudWatch Logs | 🔜      |
+| ขาออก Sync   | HTTP GET /v1/dispatch/{id}       | ดึงข้อมูล Dispatch Order (เสริม get-mission response) | Degraded Mode      | [TBD]   |
+| ขาเข้า Sync  | GET /missions/{request_id}       | ดู Timeline + รูปภาพ                                  | [TBD]              | [TBD]   |
 
 ---
 
@@ -141,7 +144,49 @@
 
 ---
 
-## **Dependency 5: API Gateway + Authorizer**
+## **Dependency 5: RescueRequest Service**
+
+### Overview
+
+| Field             | Value                       |
+| ----------------- | --------------------------- |
+| Service Owner     | Phattharaphum Kingchai      |
+| Type              | Service                     |
+| Interaction Style | Synchronous (REST)          |
+| Criticality       | High (รองรับ Degraded Mode) |
+
+### Purpose
+
+- ดึงข้อมูล Request (description, location, requestType, peopleCount)
+- เป็น **Source of Truth** ของ Rescue Request ที่ผูกกับภารกิจนี้
+
+### Endpoint ที่เรียก
+
+`GET /v1/rescue-requests/{requestId}`
+
+- Auth: `Authorization: Bearer <token>`
+- รับ `requestId` จาก path parameter ของ `GET /missions/{request_id}`
+
+### Interaction
+
+| ทิศทาง     | ช่องทาง                        | รายละเอียด                                  | Demo 2            |
+| ---------- | ------------------------------ | ------------------------------------------- | ----------------- |
+| ขาออก Sync | HTTP GET /v1/rescue-requests/… | ดึงข้อมูล Request (ล้มเหลว → Degraded Mode) | ✅ URL จริง [TBD] |
+
+### Failure Handling
+
+| กรณี             | การจัดการ                                                        |
+| ---------------- | ---------------------------------------------------------------- |
+| Sync GET ล้มเหลว | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
+
+### TBD
+
+- Service URL (prod)
+- Bearer token สำหรับ service-to-service auth
+
+---
+
+## **Dependency 6: API Gateway + Authorizer**
 
 ### Overview
 
@@ -171,7 +216,7 @@
 
 ---
 
-## **Dependency 6: Amazon EventBridge**
+## **Dependency 7: Amazon EventBridge**
 
 ### Overview
 
@@ -208,15 +253,53 @@
 
 ---
 
+## **Dependency 8: RescueTeam Service**
+
+### Overview
+
+| Field             | Value                         |
+| ----------------- | ----------------------------- |
+| Service Owner     | กมลพันธ์ กันธายอด             |
+| Type              | Service                       |
+| Interaction Style | Synchronous (REST)            |
+| Criticality       | Medium (รองรับ Degraded Mode) |
+
+---
+
+### Purpose
+
+- ดึงข้อมูลทีมกู้ภัย (ชื่อ, ความสามารถ) เพื่อเสริมข้อมูลใน `get-mission` response
+
+### Interaction
+
+| ทิศทาง     | ช่องทาง         | รายละเอียด                             | Demo 1        | Demo 2+ |
+| ---------- | --------------- | -------------------------------------- | ------------- | ------- |
+| ขาออก Sync | HTTP GET /teams | ดึงข้อมูลทีม (ล้มเหลว → Degraded Mode) | Degraded Mode | [TBD]   |
+
+### Failure Handling
+
+| กรณี             | การจัดการ                                                        |
+| ---------------- | ---------------------------------------------------------------- |
+| Sync GET ล้มเหลว | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
+
+### TBD
+
+- Service URL
+- Bearer token สำหรับ service-to-service auth
+
+---
+
 ## **📊 สรุปภาพรวม**
 
 | #   | Dependency         | Type           | Interaction   | Criticality | Demo 1      | Demo 2+      |
 | --- | ------------------ | -------------- | ------------- | ----------- | ----------- | ------------ |
-| 1   | IncidentTracking   | Service        | Sync + Async  | High        | Mock + Logs | 🔜           |
+| 1   | IncidentTracking   | Service        | Async only    | Medium      | Logs        | 🔜           |
 | 2   | Dispatch           | Service        | Bidirectional | Critical    | Seed + Logs | 🔜           |
 | 3   | Prioritization     | Service        | Async         | Medium      | Logs        | 🔜           |
 | 4   | S3                 | Infrastructure | Upload        | Medium      | ❌          | 🔜           |
-| 5   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅           |
-| 6   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | Real Targets |
+| 5   | RescueRequest      | Service        | Sync          | High        | ❌          | ✅ Real      |
+| 6   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅           |
+| 7   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | Real Targets |
+| 8   | RescueTeam         | Service        | Sync          | Medium      | Degraded    | [TBD]        |
 
 ---
