@@ -49,10 +49,10 @@ func init() {
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// 1. Parse incident_id from path
-	incidentID := request.PathParameters["incident_id"]
-	if incidentID == "" {
-		return response.Error(400, "MISSING_PARAMETER", "incident_id is required"), nil
+	// 1. Parse request_id from path
+	requestID := request.PathParameters["request_id"]
+	if requestID == "" {
+		return response.Error(400, "MISSING_PARAMETER", "request_id is required"), nil
 	}
 
 	// 2. Parse X-Rescue-Team-ID from authorizer context
@@ -88,18 +88,18 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	}
 
 	// 5. Check mission exists
-	mission, err := missionRepo.GetMissionByIncidentID(ctx, incidentID)
+	mission, err := missionRepo.GetMissionByRequestID(ctx, requestID)
 	if err != nil {
 		log.Printf("ERROR: query mission: %v", err)
 		return response.Error(500, "INTERNAL_ERROR", "Failed to query mission"), nil
 	}
 	if mission == nil {
-		return response.Error(404, "INCIDENT_NOT_FOUND", "No mission found for incident: "+incidentID), nil
+		return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request: "+requestID), nil
 	}
 
 	// 6. Generate S3 key
 	timestamp := time.Now().Unix()
-	imageKey := fmt.Sprintf("evidence/%s/%s/%d-%s", incidentID, rescueTeamID, timestamp, req.FileName)
+	imageKey := fmt.Sprintf("evidence/%s/%s/%d-%s", mission.MissionID, rescueTeamID, timestamp, req.FileName)
 
 	// 7. Generate presigned PUT URL
 	presignResult, err := s3PresignClient.PresignPutObject(ctx, &s3.PutObjectInput{
