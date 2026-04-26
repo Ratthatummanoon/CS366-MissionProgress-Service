@@ -16,7 +16,7 @@ import StateMachineDiagram from "@/components/StateMachineDiagram";
 
 function MissionDetailContent() {
   const searchParams = useSearchParams();
-  const incidentId = searchParams.get("id") || "";
+  const requestId = searchParams.get("id") || "";
   const router = useRouter();
   const { config, isReady } = useConfig();
   const [mission, setMission] = useState<MissionDetailResponse | null>(null);
@@ -38,8 +38,8 @@ function MissionDetailContent() {
   }, [isReady, config, router]);
 
   useEffect(() => {
-    if (config && incidentId) loadMission();
-  }, [config, incidentId]);
+    if (config && requestId) loadMission();
+  }, [config, requestId]);
 
   async function loadMission() {
     const client = getClient();
@@ -47,7 +47,7 @@ function MissionDetailContent() {
     setLoading(true);
     setError("");
     try {
-      const data = await client.getMission(incidentId);
+      const data = await client.getMission(requestId);
       setMission(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
@@ -70,7 +70,7 @@ function MissionDetailContent() {
       // Upload image first if present
       if (imageFile) {
         const presigned = await client.getPresignedUrl(
-          incidentId,
+          requestId,
           imageFile.name,
           imageFile.type,
         );
@@ -90,7 +90,7 @@ function MissionDetailContent() {
       if (impactLevel) body.new_impact_level = impactLevel;
       if (imageKey) body.image_key = imageKey;
 
-      const res = await client.reportProgress(incidentId, body);
+      const res = await client.reportProgress(requestId, body);
       setSubmitMsg(`อัปเดตสถานะเป็น ${res.new_status} สำเร็จ`);
 
       // Reset form
@@ -120,14 +120,14 @@ function MissionDetailContent() {
     );
   }
 
-  if (!incidentId) {
+  if (!requestId) {
     return (
       <div className="min-h-screen flex flex-col">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-gray-500">
             <span className="text-4xl block mb-3">🔍</span>
-            <p className="text-lg font-medium">ไม่ได้ระบุ Incident ID</p>
+            <p className="text-lg font-medium">ไม่ได้ระบุ Request ID</p>
             <button
               onClick={() => router.push("/dashboard")}
               className="mt-4 text-blue-600 hover:underline text-sm"
@@ -174,10 +174,11 @@ function MissionDetailContent() {
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">
-                    {mission.incident_id}
+                    {mission.request_id}
                   </h1>
                   <p className="text-sm text-gray-500 mt-1">
-                    Mission ID: {mission.mission_id}
+                    Incident: {mission.incident_id} | Mission ID:{" "}
+                    {mission.mission_id}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -213,8 +214,7 @@ function MissionDetailContent() {
               {mission.data_source === "partial" && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 inline-block">
-                    ⚠️ แสดงข้อมูลบางส่วน — IncidentTracking Service
-                    ไม่พร้อมใช้งาน
+                    ⚠️ แสดงข้อมูลบางส่วน — RescueRequest Service ไม่พร้อมใช้งาน
                   </p>
                 </div>
               )}
