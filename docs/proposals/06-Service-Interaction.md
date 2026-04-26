@@ -16,7 +16,9 @@ graph LR
     end
 
     %% --- External Dependency ---
-    IncidentAPI["IncidentTracking<br>Service<br>(Mock in Demo 1)"]
+    RescueReqAPI["RescueRequest<br>Service"]
+    ManageDispatchOutAPI["Dispatch Management<br>Service"]
+    RescueTeamAPI["RescueTeam<br>Service"]
 
     %% --- S3 ---
     S3[("Amazon S3<br>Evidence Bucket<br>(Demo 2+)")]
@@ -34,15 +36,19 @@ graph LR
     end
 
     %% === Inbound Synchronous ===
-    App == "① POST /incidents/{id}/progress<br>(Status + Note + Impact Level)" ==> MS
-    App == "② GET /incidents/{id}<br>(Timeline + State)" ==> MS
-    DispatchUI == "③ GET /incidents/{id}<br>(Timeline + Evidence)<br>[TBD]" ==> MS
-    App -. "⑥ POST /incidents/{id}/presigned-url<br>(Demo 2+)" .-> MS
-    App -. "⑦ GET /incidents?team_id=<br>(Demo 2+)" .-> MS
+    App == "① POST /missions/{request_id}/progress<br>(Status + Note + Impact Level)" ==> MS
+    App == "② GET /missions/{request_id}<br>(Timeline + State)" ==> MS
+    DispatchUI == "③ GET /missions/{request_id}<br>(Timeline + Evidence)<br>[TBD]" ==> MS
+    App -. "⑥ POST /missions/{request_id}/presigned-url<br>(Demo 2+)" .-> MS
+    App -. "⑦ GET /missions?team_id=<br>(Demo 2+)" .-> MS
 
     %% === Outbound Synchronous ===
-    MS == "④ GET /incidents/{id}<br>(Degraded Mode)" ==> IncidentAPI
-    MS -. "⑥b Generate Presigned URL<br>(Demo 2+)" .-> S3
+    MS == "④ GET /v1/rescue-requests/{requestId}<br>(Degraded Mode)" ==> RescueReqAPI
+    RescueReqAPI == "{ request: { description, location, requestType } }" ==> MS
+    MS -. "④b GET /v1/dispatches?teamId=<br>(Degraded Mode)" .-> ManageDispatchOutAPI
+    MS -. "④c GET /v1/teams/{teamId}<br>(Degraded Mode)" .-> RescueTeamAPI
+    MS -. "④d PATCH /v1/teams/{teamId}/status<br>(RESOLVED → AVAILABLE, fire-and-forget)" .-> RescueTeamAPI
+    MS -. "⑥b Generate Presigned URL" .-> S3
 
     %% === Internal Event Publishing ===
     MS -. "⑤ Publish Events" .-> EB
@@ -68,7 +74,9 @@ graph LR
     style MS fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
     style EB fill:#fff8e1,stroke:#ff8f00,stroke-width:2px
     style Outbox fill:#fff9c4,stroke:#f9a825,stroke-width:2px
-    style IncidentAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
+    style RescueReqAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
+    style ManageDispatchOutAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
+    style RescueTeamAPI fill:#ffebee,stroke:#c62828,stroke-width:1px,stroke-dasharray: 5 5
     style S3 fill:#fff3e0,stroke:#f57c00,stroke-width:1px,stroke-dasharray: 5 5
     style CWL fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     style Incident fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1px,stroke-dasharray: 5 5
@@ -90,7 +98,7 @@ graph LR
 
 ---
 
-## ① POST /incidents/{incident_id}/progress — Rescue Team
+## ① POST /missions/{request_id}/progress — Rescue Team
 
 | รายละเอียด  | ค่า                                       |
 | :---------- | :---------------------------------------- |
@@ -117,7 +125,7 @@ graph LR
 {
   "message": "Progress reported successfully",
   "mission_id": "MSN-001",
-  "incident_id": "INC-001",
+  "request_id": "REQ-001",
   "old_status": "EN_ROUTE",
   "new_status": "ON_SITE",
   "updated_at": "2025-..."
@@ -126,7 +134,7 @@ graph LR
 
 ---
 
-## ② GET /incidents/{incident_id} — Rescue Team
+## ② GET /missions/{request_id} — Rescue Team
 
 | รายละเอียด  | ค่า                              |
 | :---------- | :------------------------------- |
@@ -140,24 +148,36 @@ graph LR
 
 ```json
 {
+  "request_id": "REQ-001",
   "incident_id": "INC-001",
   "mission_id": "MSN-001",
+  "dispatch_id": "DSP-001",
   "rescue_team_id": "TEAM-ALPHA",
+  "team_name": "Alpha Rescue Unit",
+  "team_type": "FLOOD",
+  "capabilities": ["swift_water_rescue", "first_aid"],
+  "equipment": ["boat", "lifejackets"],
+  "team_location": { "lat": 13.7563, "lng": 100.5018 },
+  "priority_level": 2,
+  "dispatch_status": "ACTIVE",
   "current_status": "ON_SITE",
   "latest_impact_level": 3,
   "started_at": "2024-12-01T08:00:00Z",
   "last_updated_at": "2025-06-14T09:32:15Z",
+  "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
+  "location": "13.7563,100.5018",
+  "incident_type": "FLOOD",
   "timeline": [ ... ],
-  "data_source": "partial"
+  "data_source": "full"
 }
 ```
 
-> - `data_source: "full"` — เรียก IncidentTracking สำเร็จ (มี description, location, incident_type)
-> - `data_source: "partial"` — เรียกไม่สำเร็จ (Degraded Mode — Demo 1 เป็น partial เสมอ)
+> - `data_source: "full"` — เรียก RescueRequest + ManageDispatch + RescueTeam ครบ
+> - `data_source: "partial"` — service ใดservice หนึ่งล้มเหลว (Degraded Mode) — omitempty fields จะหายไปจาก response
 
 ---
 
-## ③ GET /incidents/{incident_id} — Dispatch Management Service
+## ③ GET /missions/{request_id} — Dispatch Management Service
 
 | รายละเอียด  | ค่า                                            |
 | :---------- | :--------------------------------------------- |
@@ -175,7 +195,7 @@ graph LR
 
 ---
 
-## ⑥ POST /incidents/{incident_id}/presigned-url — Rescue Team (Demo 2+)
+## ⑥ POST /missions/{request_id}/presigned-url — Rescue Team (Demo 2+)
 
 | รายละเอียด  | ค่า                                      |
 | :---------- | :--------------------------------------- |
@@ -200,7 +220,7 @@ graph LR
 ```json
 {
   "upload_url": "https://s3.amazonaws.com/...",
-  "image_key": "evidence/INC-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg",
+  "image_key": "evidence/REQ-001/TEAM-ALPHA/1718352735-flood-evidence-001.jpg",
   "expires_in": 300,
   "message": "Presigned URL generated successfully"
 }
@@ -209,15 +229,15 @@ graph LR
 #### Full Upload Flow
 
 ```
-⑥a.  Frontend  →  POST /incidents/{id}/presigned-url  →  Lambda
+⑥a.  Frontend  →  POST /missions/{request_id}/presigned-url  →  Lambda
 ⑥b.  Lambda    →  S3 (Generate Presigned URL)          →  Return URL + image_key
 ⑥c.  Frontend  →  S3 (Direct PUT Upload ด้วย Presigned URL)
-⑥d.  Frontend  →  POST /incidents/{id}/progress (แนบ image_key)  →  เชื่อม Evidence กับ Timeline entry
+⑥d.  Frontend  →  POST /missions/{request_id}/progress (แนบ image_key)  →  เชื่อม Evidence กับ Timeline entry
 ```
 
 ---
 
-## ⑦ GET /incidents?team_id={team_id} — Rescue Team (Demo 2+)
+## ⑦ GET /missions?team_id={team_id} — Rescue Team (Demo 2+)
 
 | รายละเอียด  | ค่า                              |
 | :---------- | :------------------------------- |
@@ -244,7 +264,7 @@ graph LR
   "missions": [
     {
       "mission_id": "MSN-001",
-      "incident_id": "INC-001",
+      "request_id": "REQ-001",
       "current_status": "ON_SITE",
       "latest_impact_level": 3,
       "started_at": "2024-12-01T08:00:00Z",
@@ -277,7 +297,7 @@ graph LR
   "detail": {
     "mission_id": "MSN-001",
     "rescue_unit_id": "TEAM-ALPHA",
-    "incident_id": "INC-001",
+    "request_id": "REQ-001",
     "incident_type": "FLOOD",
     "incident_description": "น้ำท่วมหนัก บ้าน 2 ชั้น",
     "incident_location": "13.7563,100.5018",
@@ -307,27 +327,33 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 ---
 
-## 1. IncidentTracking Service
+## 1. RescueRequest Service
 
-> **Owner:** Krittamet Damthongkam
-> **บทบาท:** เป็น Source of Truth ของข้อมูลเหตุการณ์ (Incident Master Data)
+> **Owner:** Phattharaphum Kingchai
+> **บทบาท:** เป็น Source of Truth ของข้อมูล Request (description, location, requestType)
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                                                                      | Demo 1                             | Demo 2+                  |
-| :-: | :--------------------------- | :--------------------------------- | :---------------------------------------------------------------------------------------------- | :--------------------------------- | :----------------------- |
-|  ④  | Sync `GET /incidents/{id}`   | MissionProgress → IncidentTracking | ดึง description, location, incident_type (ถ้าล้มเหลว → Degraded Mode, `data_source: "partial"`) | ⚠️ Mock (localhost:9999 → timeout) | ✅ URL จริง \[TBD]       |
-| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")                                                 | → CloudWatch Logs                  | 🔜 → Service จริง \[TBD] |
-| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต Master Data                                   | → CloudWatch Logs                  | 🔜 → Service จริง \[TBD] |
+|  #  | ช่องทาง                                             | ทิศทาง                              | รายละเอียด                                                                                    | Demo 1             | Demo 2+             |
+| :-: | :-------------------------------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------- | :----------------- | :------------------ |
+|  ④  | Sync `GET /v1/rescue-requests/{requestId}` (Bearer) | MissionProgress → RescueRequest     | ดึง description, location, requestType (ถ้าล้มเหลว → Degraded Mode, `data_source: "partial"`) | ⚠️ ยังไม่เชื่อมต่อ | ✅ URL + Token จริง |
+| ⑤a  | Async `MissionStatusChanged`                        | MissionProgress → RescueRequest[^1] | แจ้งอัปเดตสถานะ Request ที่เชื่อมโยง                                                          | → CloudWatch Logs  | 🔜 TBD              |
+
+[^1]: RescueRequest Service รับ Event ผ่าน EventBridge หากมีการตั้งค่า rule
 
 #### Expected API Response (Sync GET)
 
 ```json
 {
-  "incident_id": "INC-001",
-  "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
-  "location": "13.7563,100.5018",
-  "incident_type": "FLOOD"
+  "request": {
+    "requestId": "REQ-001",
+    "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
+    "location": {
+      "latitude": 13.7563,
+      "longitude": 100.5018
+    },
+    "requestType": "FLOOD"
+  }
 }
 ```
 
@@ -335,23 +361,62 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 | กรณี                                        | การจัดการ                                                                     |
 | :------------------------------------------ | :---------------------------------------------------------------------------- |
-| Sync GET ล้มเหลว (timeout 3 วินาที / error) | **Degraded Mode** — ส่งเฉพาะข้อมูลที่มี → ทีมกู้ภัยยังทำงานได้ปกติ            |
+| Sync GET ล้มเหลว (timeout 800ms + retry 2x) | **Degraded Mode** — ส่งเฉพาะข้อมูลที่มี → ทีมกู้ภัยยังทำงานได้ปกติ            |
 | Async Event Publish ล้มเหลว                 | **Outbox Pattern** → บันทึกลง EventOutbox → (Demo 2+) retry processor ส่งใหม่ |
 
 ---
 
-## 2. Dispatch Management Service
+## 2. IncidentTracking Service
+
+> **Owner:** Krittamet Damthongkam
+> **บทบาท:** รับ Async Events จาก MissionProgress (ไม่มี Sync call แล้ว)
+
+#### การสื่อสาร
+
+|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                           | Demo 1            | Demo 2+                  |
+| :-: | :--------------------------- | :--------------------------------- | :--------------------------------------------------- | :---------------- | :----------------------- |
+| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")      | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
+| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต MD | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
+
+#### Failure Handling
+
+| กรณี                                  | การจัดการ                                             |
+| :------------------------------------ | :---------------------------------------------------- |
+| Async Event Publish ล้มเหลว           | Outbox Pattern → EventOutbox table → retry ใน Demo 2+ |
+| EventBridge → Incident Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)               |
+
+---
+
+## 3. Dispatch Management Service
 
 > **Owner:** Noppakron Songkroh
 > **บทบาท:** จัดการการมอบหมายงานและสถานะทีมกู้ภัย (BUSY/AVAILABLE)
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                                       | ทิศทาง                     | รายละเอียด                                               | Demo 1            | Demo 2+                  |
-| :-: | :-------------------------------------------- | :------------------------- | :------------------------------------------------------- | :---------------- | :----------------------- |
-| ⑤b  | Async `MissionStatusChanged` (Rule: RESOLVED) | MissionProgress → Dispatch | แจ้งว่าภารกิจเสร็จ → ปลดล็อกทีมกู้ภัย (BUSY → AVAILABLE) | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
+|  #  | ช่องทาง                                       | ทิศทาง                     | รายละเอียด                                                                       | Demo 1            | Demo 2+                  |
+| :-: | :-------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------- | :---------------- | :----------------------- |
+| ④b  | Sync `GET /v1/dispatches?teamId={teamId}`     | MissionProgress → Dispatch | ดึง dispatch status, priority level (ล้มเหลว → Degraded Mode, omit จาก response) | ⚠️ Degraded Mode  | ✅ URL + Token จริง      |
+| ⑤b  | Async `MissionStatusChanged` (Rule: RESOLVED) | MissionProgress → Dispatch | แจ้งว่าภารกิจเสร็จ → ปลดล็อกทีมกู้ภัย (BUSY → AVAILABLE)                         | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
 
-#### EventBridge Rule Filter
+#### Expected API Response (④b Sync GET)
+
+```json
+{
+  "teamId": "TEAM-ALPHA",
+  "items": [
+    {
+      "dispatchId": "DSP-001",
+      "requestId": "REQ-001",
+      "status": "ACTIVE",
+      "priorityLevel": 2,
+      "dispatchedAt": "2025-06-14T08:45:00Z"
+    }
+  ]
+}
+```
+
+#### EventBridge Rule Filter (⑤b Async)
 
 ```json
 {
@@ -367,14 +432,15 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### Failure Handling
 
-| กรณี                                  | การจัดการ                                             |
-| :------------------------------------ | :---------------------------------------------------- |
-| EventBridge Publish ล้มเหลว           | Outbox Pattern → EventOutbox table → retry ใน Demo 2+ |
-| EventBridge → Dispatch Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)               |
+| กรณี                                  | การจัดการ                                                                 |
+| :------------------------------------ | :------------------------------------------------------------------------ |
+| Sync GET ล้มเหลว                      | **Degraded Mode** → omit `dispatch_status`, `priority_level` จาก response |
+| EventBridge Publish ล้มเหลว           | Outbox Pattern → EventOutbox table → retry ใน Demo 2+                     |
+| EventBridge → Dispatch Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)                                   |
 
 ---
 
-## 3. Rescue Prioritization Service
+## 4. Rescue Prioritization Service
 
 > **Owner:** Nattasak Chonmanat
 > **บทบาท:** จัดลำดับความสำคัญและความเร่งด่วนของแต่ละเคส (Priority Score)
@@ -395,7 +461,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 ---
 
-## 4. Amazon S3 — Evidence Bucket (Demo 2+)
+## 5. Amazon S3 — Evidence Bucket (Demo 2+)
 
 > **บทบาท:** เก็บรูปภาพหลักฐานจากหน้างาน
 
@@ -415,6 +481,43 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 ---
 
+## 6. RescueTeam Service
+
+> **Owner:** กมลพันธ์ กันธายอด
+> **บทบาท:** เป็น Source of Truth ของข้อมูลทีมกู้ภัย (ชื่อ, ประเภท, ความสามารถ, อุปกรณ์, ตำแหน่ง)
+
+#### การสื่อสาร
+
+|  #  | ช่องทาง                                         | ทิศทาง                       | รายละเอียด                                                                                                           | สถานะ          |
+| :-: | :---------------------------------------------- | :--------------------------- | :------------------------------------------------------------------------------------------------------------------- | :------------- |
+| ④c  | Sync `GET /v1/teams/{teamId}` (Bearer)          | MissionProgress → RescueTeam | ดึง team_name, team_type, capabilities, equipment, location (ล้มเหลว → Degraded Mode)                                | ✅ Implemented |
+| ④d  | Sync `PATCH /v1/teams/{teamId}/status` (Bearer) | MissionProgress → RescueTeam | เมื่อ `new_status = RESOLVED` → ส่ง `{"status": "AVAILABLE"}` เพื่อปล่อยทีม (best-effort, fire-and-forget goroutine) | ✅ Implemented |
+
+#### Expected API Response (④c Sync GET)
+
+```json
+{
+  "teamId": "TEAM-ALPHA",
+  "teamName": "Alpha Rescue Unit",
+  "teamType": "FLOOD",
+  "capabilities": ["swift_water_rescue", "first_aid"],
+  "equipment": ["boat", "lifejackets"],
+  "location": {
+    "lat": 13.7563,
+    "lng": 100.5018
+  }
+}
+```
+
+#### Failure Handling
+
+| กรณี               | การจัดการ                                                                                                    |
+| :----------------- | :----------------------------------------------------------------------------------------------------------- |
+| Sync GET ล้มเหลว   | **Degraded Mode** → omit `team_name`, `team_type`, `capabilities`, `equipment`, `team_location` จาก response |
+| Sync PATCH ล้มเหลว | **Best-effort** — log แล้วผ่าน ไม่ block response กลับ caller (fire-and-forget goroutine)                    |
+
+---
+
 ---
 
 # EventBridge Events — Routing Detail
@@ -423,11 +526,11 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 `report-progress` Lambda publish events เมื่อ POST สำเร็จ:
 
-| Event                    | Trigger                     | Payload สำคัญ                                                                                   |
-| :----------------------- | :-------------------------- | :---------------------------------------------------------------------------------------------- |
-| `MissionStatusChanged`   | ทุกครั้งที่สถานะเปลี่ยน     | mission_id, incident_id, rescue_team_id, old_status, new_status, note, updated_at, performed_by |
-| `MissionBackupRequested` | new_status = `NEED_BACKUP`  | (เหมือน MissionStatusChanged)                                                                   |
-| `ImpactLevelUpdated`     | มี new_impact_level ใน body | mission_id, incident_id, rescue_team_id, new_impact_level, note, updated_at                     |
+| Event                    | Trigger                     | Payload สำคัญ                                                                                  |
+| :----------------------- | :-------------------------- | :--------------------------------------------------------------------------------------------- |
+| `MissionStatusChanged`   | ทุกครั้งที่สถานะเปลี่ยน     | mission_id, request_id, rescue_team_id, old_status, new_status, note, updated_at, performed_by |
+| `MissionBackupRequested` | new_status = `NEED_BACKUP`  | (เหมือน MissionStatusChanged)                                                                  |
+| `ImpactLevelUpdated`     | มี new_impact_level ใน body | mission_id, request_id, rescue_team_id, new_impact_level, note, updated_at                     |
 
 #### EventBridge Event Payload ตัวอย่าง
 
@@ -439,7 +542,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
   "detail-type": "MissionStatusChanged",
   "detail": {
     "mission_id": "MSN-001",
-    "incident_id": "INC-001",
+    "request_id": "REQ-001",
     "rescue_team_id": "TEAM-ALPHA",
     "old_status": "EN_ROUTE",
     "new_status": "ON_SITE",
@@ -458,7 +561,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
   "detail-type": "ImpactLevelUpdated",
   "detail": {
     "mission_id": "MSN-001",
-    "incident_id": "INC-001",
+    "request_id": "REQ-001",
     "rescue_team_id": "TEAM-ALPHA",
     "new_impact_level": "HIGH",
     "note": "น้ำเพิ่มระดับเร็วกว่าที่ประเมิน",
@@ -523,20 +626,20 @@ EventBridge Publish ล้มเหลว
 
 ## Inbound (เข้า MissionProgress)
 
-|  #  | Source        | ช่องทาง     | Endpoint / Event                     | Demo 1          | Demo 2+    |
-| :-: | :------------ | :---------- | :----------------------------------- | :-------------- | :--------- |
-|  ①  | Rescue Team   | Sync POST   | `POST /incidents/{id}/progress`      | ✅ curl/Postman | ✅ Web App |
-|  ②  | Rescue Team   | Sync GET    | `GET /incidents/{id}`                | ✅              | ✅         |
-|  ③  | Dispatch Mgmt | Sync GET    | `GET /incidents/{id}`                | \[TBD]          | \[TBD]     |
-|  ⑥  | Rescue Team   | Sync POST   | `POST /incidents/{id}/presigned-url` | ❌              | 🔜         |
-|  ⑦  | Rescue Team   | Sync GET    | `GET /incidents?team_id={id}`        | ❌              | 🔜         |
-|  ⑧  | Dispatch Mgmt | Async Event | `MissionAssignedEvent`               | ❌ Seed Data    | 🔜 \[TBD]  |
+|  #  | Source        | ช่องทาง     | Endpoint / Event                            | Demo 1          | Demo 2+    |
+| :-: | :------------ | :---------- | :------------------------------------------ | :-------------- | :--------- |
+|  ①  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/progress`      | ✅ curl/Postman | ✅ Web App |
+|  ②  | Rescue Team   | Sync GET    | `GET /missions/{request_id}`                | ✅              | ✅         |
+|  ③  | Dispatch Mgmt | Sync GET    | `GET /missions/{request_id}`                | \[TBD]          | \[TBD]     |
+|  ⑥  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/presigned-url` | ❌              | 🔜         |
+|  ⑦  | Rescue Team   | Sync GET    | `GET /missions?team_id={id}`                | ❌              | 🔜         |
+|  ⑧  | Dispatch Mgmt | Async Event | `MissionAssignedEvent`                      | ❌ Seed Data    | 🔜 \[TBD]  |
 
 ## Downstream / Outbound (ออกจาก MissionProgress)
 
 |  #  | Destination           | ช่องทาง     | Event / API                                     | Demo 1    | Demo 2+           |
 | :-: | :-------------------- | :---------- | :---------------------------------------------- | :-------- | :---------------- |
-|  ④  | IncidentTracking      | Sync GET    | `GET /incidents/{id}` (Degraded Mode)           | ⚠️ Mock   | ✅ URL จริง       |
+|  ④  | IncidentTracking      | Sync GET    | `GET /missions/{request_id}` (Degraded Mode)    | ⚠️ Mock   | ✅ URL จริง       |
 | ⑥b  | Amazon S3             | Sync        | Generate Presigned URL                          | ❌        | 🔜                |
 | ⑤a  | IncidentTracking      | Async Event | `MissionStatusChanged` + `ImpactLevelUpdated`   | → CW Logs | 🔜 → Service จริง |
 | ⑤b  | Dispatch Mgmt         | Async Event | `MissionStatusChanged` (Rule: RESOLVED)         | → CW Logs | 🔜 → Service จริง |
