@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -19,12 +20,15 @@ import (
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/repository"
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/response"
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/statemachine"
+
+	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/client"
 )
 
 var (
-	missionRepo  *repository.MissionRepo
-	timelineRepo *repository.TimelineRepo
-	publisher    *evtpub.Publisher
+	missionRepo      *repository.MissionRepo
+	timelineRepo     *repository.TimelineRepo
+	publisher        *evtpub.Publisher
+	rescueTeamClient *client.RescueTeamClient
 )
 
 func init() {
@@ -44,13 +48,14 @@ func init() {
 	timelineRepo = repository.NewTimelineRepo(ddbClient, tableTimeline)
 	outboxRepo := repository.NewOutboxRepo(ddbClient, tableOutbox)
 	publisher = evtpub.NewPublisher(ebClient, outboxRepo)
+	rescueTeamClient = client.NewRescueTeamClient()
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// 1. Parse incident_id from path
-	incidentID := request.PathParameters["incident_id"]
-	if incidentID == "" {
-		return response.Error(400, "MISSING_PARAMETER", "incident_id is required"), nil
+	// 1. Parse request_id from path
+	requestID := request.PathParameters["request_id"]
+	if requestID == "" {
+		return response.Error(400, "MISSING_PARAMETER", "request_id is required"), nil
 	}
 
 	// 2. Parse X-Rescue-Team-ID from authorizer context or headers
@@ -79,18 +84,19 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		return response.Error(400, "INVALID_STATUS", "Invalid status value: "+req.Status), nil
 	}
 
-	// 4. Query mission by incident_id
-	mission, err := missionRepo.GetMissionByIncidentID(ctx, incidentID)
+	// 4. Query mission by request_id
+	mission, err := missionRepo.GetMissionByRequestID(ctx, requestID)
 	if err != nil {
 		log.Printf("ERROR: query mission: %v", err)
 		return response.Error(500, "INTERNAL_ERROR", "Failed to query mission"), nil
 	}
 	if mission == nil {
-		return response.Error(404, "INCIDENT_NOT_FOUND", "No mission found for incident: "+incidentID), nil
+		return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request: "+requestID), nil
 	}
 
 	// 5. Validate state transition
 	oldStatus := mission.CurrentStatus
+	oldImpactLevel := mission.LatestImpactLevel // capture before update for BUG-07
 	if !statemachine.IsValidTransition(oldStatus, req.Status) {
 		return response.Error(400, "INVALID_STATE_TRANSITION",
 			"Cannot transition from "+oldStatus+" to "+req.Status), nil
@@ -108,13 +114,17 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		return response.Error(500, "INTERNAL_ERROR", "Failed to update mission status"), nil
 	}
 
-	// 7. Add timeline entry
+	// 7. Add timeline entry with descriptive message (BUG-11)
+	timelineDesc := fmt.Sprintf("Status changed: %s → %s", oldStatus, req.Status)
+	if req.Note != "" {
+		timelineDesc += ". Note: " + req.Note
+	}
 	entry := &models.TimelineEntry{
 		MissionID:   mission.MissionID,
 		Timestamp:   now,
 		LogID:       uuid.New().String(),
 		ActionType:  "STATUS_CHANGE",
-		Description: req.Note,
+		Description: timelineDesc,
 		PerformedBy: rescueTeamID,
 		GPSLocation: req.CurrentLocation,
 		ImageKey:    req.ImageKey,
@@ -147,23 +157,37 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		})
 	}
 
-	if req.NewImpactLevel != nil {
+	if req.NewImpactLevel != nil && *req.NewImpactLevel != oldImpactLevel {
 		publisher.PublishImpactLevelUpdated(ctx, models.ImpactLevelUpdatedEvent{
 			SchemaVersion: "1.0",
 			MissionID:     mission.MissionID,
 			IncidentID:    mission.IncidentID,
 			RescueTeamID:  mission.RescueTeamID,
-			OldLevel:      0,
+			OldLevel:      oldImpactLevel, // use captured value before update (BUG-07)
 			NewLevel:      *req.NewImpactLevel,
 			UpdatedAt:     now,
 			UpdatedBy:     rescueTeamID,
 		})
 	}
 
+	// 8b. Notify RescueTeam Service ให้ free team กลับเป็น AVAILABLE เมื่อ RESOLVED
+	// Fire-and-forget goroutine: ไม่บล็อค response path (BUG-03)
+	if req.Status == "RESOLVED" && mission.RescueTeamID != "" {
+		teamID := mission.RescueTeamID
+		go func() {
+			if err := rescueTeamClient.UpdateTeamStatus(context.Background(), teamID, "AVAILABLE"); err != nil {
+				log.Printf("WARN: failed to update RescueTeam status to AVAILABLE for team=%s: %v", teamID, err)
+			} else {
+				log.Printf("INFO: RescueTeam team=%s released to AVAILABLE", teamID)
+			}
+		}()
+	}
+
 	// 9. Return success response
 	return response.JSON(200, models.ReportProgressResponse{
 		Message:    "Progress reported successfully",
 		MissionID:  mission.MissionID,
+		RequestID:  mission.RequestID,
 		IncidentID: mission.IncidentID,
 		OldStatus:  oldStatus,
 		NewStatus:  req.Status,
