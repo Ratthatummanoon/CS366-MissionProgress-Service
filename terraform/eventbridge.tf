@@ -164,12 +164,12 @@ resource "aws_cloudwatch_event_target" "outbox_processor_target" {
 # Rule: MissionAssignedEvent from Dispatch → mission-assigned-handler
 # ---------------------------------------------------
 resource "aws_cloudwatch_event_rule" "mission_assigned" {
-  name           = "mission-assigned-rule"
-  description    = "Capture MissionAssignedEvent from Dispatch service"
+  name        = "mission-assigned-rule"
+  description = "Capture DispatchOrderCreated from Manage Dispatch Service"
 
   event_pattern = jsonencode({
-    source      = ["dispatch-management-service"]
-    detail-type = ["MissionAssignedEvent"]
+    source      = ["ManageDispatchService"]
+    detail-type = ["DispatchOrderCreated"]
   })
 
   tags = {

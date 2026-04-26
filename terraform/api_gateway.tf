@@ -24,38 +24,38 @@ resource "aws_api_gateway_authorizer" "lambda_auth" {
 }
 
 # ---------------------------------------------------
-# Resource: /incidents
+# Resource: /missions
 # ---------------------------------------------------
-resource "aws_api_gateway_resource" "incidents" {
+resource "aws_api_gateway_resource" "missions" {
   rest_api_id = aws_api_gateway_rest_api.api.id
   parent_id   = aws_api_gateway_rest_api.api.root_resource_id
-  path_part   = "incidents"
+  path_part   = "missions"
 }
 
 # ---------------------------------------------------
-# Resource: /incidents/{incident_id}
+# Resource: /missions/{request_id}
 # ---------------------------------------------------
-resource "aws_api_gateway_resource" "incident_id" {
+resource "aws_api_gateway_resource" "request_id" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  parent_id   = aws_api_gateway_resource.incidents.id
-  path_part   = "{incident_id}"
+  parent_id   = aws_api_gateway_resource.missions.id
+  path_part   = "{request_id}"
 }
 
 # ---------------------------------------------------
-# Resource: /incidents/{incident_id}/progress
+# Resource: /missions/{request_id}/progress
 # ---------------------------------------------------
-resource "aws_api_gateway_resource" "progress" {
+resource "aws_api_gateway_resource" "mission_progress" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  parent_id   = aws_api_gateway_resource.incident_id.id
+  parent_id   = aws_api_gateway_resource.request_id.id
   path_part   = "progress"
 }
 
 # ---------------------------------------------------
-# GET /incidents/{incident_id}
+# GET /missions/{request_id}
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "get_mission" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.incident_id.id
+  resource_id   = aws_api_gateway_resource.request_id.id
   http_method   = "GET"
   authorization = "CUSTOM"
   authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
@@ -68,7 +68,7 @@ resource "aws_api_gateway_method" "get_mission" {
 
 resource "aws_api_gateway_integration" "get_mission" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
-  resource_id             = aws_api_gateway_resource.incident_id.id
+  resource_id             = aws_api_gateway_resource.request_id.id
   http_method             = aws_api_gateway_method.get_mission.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
@@ -76,11 +76,11 @@ resource "aws_api_gateway_integration" "get_mission" {
 }
 
 # ---------------------------------------------------
-# POST /incidents/{incident_id}/progress
+# POST /missions/{request_id}/progress
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "report_progress" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.progress.id
+  resource_id   = aws_api_gateway_resource.mission_progress.id
   http_method   = "POST"
   authorization = "CUSTOM"
   authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
@@ -93,7 +93,7 @@ resource "aws_api_gateway_method" "report_progress" {
 
 resource "aws_api_gateway_integration" "report_progress" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
-  resource_id             = aws_api_gateway_resource.progress.id
+  resource_id             = aws_api_gateway_resource.mission_progress.id
   http_method             = aws_api_gateway_method.report_progress.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
@@ -101,18 +101,18 @@ resource "aws_api_gateway_integration" "report_progress" {
 }
 
 # ---------------------------------------------------
-# OPTIONS /incidents/{incident_id} (CORS)
+# OPTIONS /missions/{request_id} (CORS)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "options_incident" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.incident_id.id
+  resource_id   = aws_api_gateway_resource.request_id.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "options_incident" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incident_id.id
+  resource_id = aws_api_gateway_resource.request_id.id
   http_method = aws_api_gateway_method.options_incident.http_method
   type        = "MOCK"
 
@@ -123,7 +123,7 @@ resource "aws_api_gateway_integration" "options_incident" {
 
 resource "aws_api_gateway_method_response" "options_incident" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incident_id.id
+  resource_id = aws_api_gateway_resource.request_id.id
   http_method = aws_api_gateway_method.options_incident.http_method
   status_code = "200"
 
@@ -140,7 +140,7 @@ resource "aws_api_gateway_method_response" "options_incident" {
 
 resource "aws_api_gateway_integration_response" "options_incident" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incident_id.id
+  resource_id = aws_api_gateway_resource.request_id.id
   http_method = aws_api_gateway_method.options_incident.http_method
   status_code = aws_api_gateway_method_response.options_incident.status_code
 
@@ -152,18 +152,18 @@ resource "aws_api_gateway_integration_response" "options_incident" {
 }
 
 # ---------------------------------------------------
-# OPTIONS /incidents/{incident_id}/progress (CORS)
+# OPTIONS /missions/{request_id}/progress (CORS)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "options_progress" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.progress.id
+  resource_id   = aws_api_gateway_resource.mission_progress.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "options_progress" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.progress.id
+  resource_id = aws_api_gateway_resource.mission_progress.id
   http_method = aws_api_gateway_method.options_progress.http_method
   type        = "MOCK"
 
@@ -174,7 +174,7 @@ resource "aws_api_gateway_integration" "options_progress" {
 
 resource "aws_api_gateway_method_response" "options_progress" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.progress.id
+  resource_id = aws_api_gateway_resource.mission_progress.id
   http_method = aws_api_gateway_method.options_progress.http_method
   status_code = "200"
 
@@ -191,7 +191,7 @@ resource "aws_api_gateway_method_response" "options_progress" {
 
 resource "aws_api_gateway_integration_response" "options_progress" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.progress.id
+  resource_id = aws_api_gateway_resource.mission_progress.id
   http_method = aws_api_gateway_method.options_progress.http_method
   status_code = aws_api_gateway_method_response.options_progress.status_code
 
@@ -203,20 +203,20 @@ resource "aws_api_gateway_integration_response" "options_progress" {
 }
 
 # ---------------------------------------------------
-# Resource: /incidents/{incident_id}/presigned-url
+# Resource: /missions/{request_id}/presigned-url
 # ---------------------------------------------------
-resource "aws_api_gateway_resource" "presigned_url" {
+resource "aws_api_gateway_resource" "mission_presigned_url" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  parent_id   = aws_api_gateway_resource.incident_id.id
+  parent_id   = aws_api_gateway_resource.request_id.id
   path_part   = "presigned-url"
 }
 
 # ---------------------------------------------------
-# POST /incidents/{incident_id}/presigned-url
+# POST /missions/{request_id}/presigned-url
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "presigned_url" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.presigned_url.id
+  resource_id   = aws_api_gateway_resource.mission_presigned_url.id
   http_method   = "POST"
   authorization = "CUSTOM"
   authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
@@ -229,7 +229,7 @@ resource "aws_api_gateway_method" "presigned_url" {
 
 resource "aws_api_gateway_integration" "presigned_url" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
-  resource_id             = aws_api_gateway_resource.presigned_url.id
+  resource_id             = aws_api_gateway_resource.mission_presigned_url.id
   http_method             = aws_api_gateway_method.presigned_url.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
@@ -237,18 +237,18 @@ resource "aws_api_gateway_integration" "presigned_url" {
 }
 
 # ---------------------------------------------------
-# OPTIONS /incidents/{incident_id}/presigned-url (CORS)
+# OPTIONS /missions/{request_id}/presigned-url (CORS)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "options_presigned_url" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.presigned_url.id
+  resource_id   = aws_api_gateway_resource.mission_presigned_url.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "options_presigned_url" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.presigned_url.id
+  resource_id = aws_api_gateway_resource.mission_presigned_url.id
   http_method = aws_api_gateway_method.options_presigned_url.http_method
   type        = "MOCK"
 
@@ -259,7 +259,7 @@ resource "aws_api_gateway_integration" "options_presigned_url" {
 
 resource "aws_api_gateway_method_response" "options_presigned_url" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.presigned_url.id
+  resource_id = aws_api_gateway_resource.mission_presigned_url.id
   http_method = aws_api_gateway_method.options_presigned_url.http_method
   status_code = "200"
 
@@ -276,7 +276,7 @@ resource "aws_api_gateway_method_response" "options_presigned_url" {
 
 resource "aws_api_gateway_integration_response" "options_presigned_url" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.presigned_url.id
+  resource_id = aws_api_gateway_resource.mission_presigned_url.id
   http_method = aws_api_gateway_method.options_presigned_url.http_method
   status_code = aws_api_gateway_method_response.options_presigned_url.status_code
 
@@ -288,11 +288,11 @@ resource "aws_api_gateway_integration_response" "options_presigned_url" {
 }
 
 # ---------------------------------------------------
-# GET /incidents (list-missions)
+# GET /missions (list-missions)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "list_missions" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.incidents.id
+  resource_id   = aws_api_gateway_resource.missions.id
   http_method   = "GET"
   authorization = "CUSTOM"
   authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
@@ -305,7 +305,7 @@ resource "aws_api_gateway_method" "list_missions" {
 
 resource "aws_api_gateway_integration" "list_missions" {
   rest_api_id             = aws_api_gateway_rest_api.api.id
-  resource_id             = aws_api_gateway_resource.incidents.id
+  resource_id             = aws_api_gateway_resource.missions.id
   http_method             = aws_api_gateway_method.list_missions.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
@@ -313,18 +313,18 @@ resource "aws_api_gateway_integration" "list_missions" {
 }
 
 # ---------------------------------------------------
-# OPTIONS /incidents (CORS)
+# OPTIONS /missions (CORS)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "options_incidents" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
-  resource_id   = aws_api_gateway_resource.incidents.id
+  resource_id   = aws_api_gateway_resource.missions.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "options_incidents" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incidents.id
+  resource_id = aws_api_gateway_resource.missions.id
   http_method = aws_api_gateway_method.options_incidents.http_method
   type        = "MOCK"
 
@@ -335,7 +335,7 @@ resource "aws_api_gateway_integration" "options_incidents" {
 
 resource "aws_api_gateway_method_response" "options_incidents" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incidents.id
+  resource_id = aws_api_gateway_resource.missions.id
   http_method = aws_api_gateway_method.options_incidents.http_method
   status_code = "200"
 
@@ -352,7 +352,7 @@ resource "aws_api_gateway_method_response" "options_incidents" {
 
 resource "aws_api_gateway_integration_response" "options_incidents" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.incidents.id
+  resource_id = aws_api_gateway_resource.missions.id
   http_method = aws_api_gateway_method.options_incidents.http_method
   status_code = aws_api_gateway_method_response.options_incidents.status_code
 
@@ -371,10 +371,10 @@ resource "aws_api_gateway_deployment" "deployment" {
 
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.incidents.id,
-      aws_api_gateway_resource.incident_id.id,
-      aws_api_gateway_resource.progress.id,
-      aws_api_gateway_resource.presigned_url.id,
+      aws_api_gateway_resource.missions.id,
+      aws_api_gateway_resource.request_id.id,
+      aws_api_gateway_resource.mission_progress.id,
+      aws_api_gateway_resource.mission_presigned_url.id,
       aws_api_gateway_method.get_mission.id,
       aws_api_gateway_integration.get_mission.id,
       aws_api_gateway_method.report_progress.id,

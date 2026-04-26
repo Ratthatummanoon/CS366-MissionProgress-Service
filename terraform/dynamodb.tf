@@ -12,24 +12,35 @@ resource "aws_dynamodb_table" "mission_assignment" {
   }
 
   attribute {
-    name = "incident_id"
-    type = "S"
-  }
-
-  attribute {
     name = "rescue_team_id"
     type = "S"
   }
 
-  global_secondary_index {
-    name            = "incident-index"
-    hash_key        = "incident_id"
-    projection_type = "ALL"
+  attribute {
+    name = "request_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "dispatch_id"
+    type = "S"
   }
 
   global_secondary_index {
     name            = "team-index"
     hash_key        = "rescue_team_id"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "request-index"
+    hash_key        = "request_id"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "dispatch-index"
+    hash_key        = "dispatch_id"
     projection_type = "ALL"
   }
 

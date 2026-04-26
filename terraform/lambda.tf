@@ -14,11 +14,12 @@ resource "aws_lambda_function" "report_progress" {
 
   environment {
     variables = {
-      TABLE_MISSION        = aws_dynamodb_table.mission_assignment.name
-      TABLE_TIMELINE       = aws_dynamodb_table.mission_timeline.name
-      TABLE_OUTBOX         = aws_dynamodb_table.event_outbox.name
-      EVENT_BUS_NAME       = aws_cloudwatch_event_bus.mission_events.name
-      INCIDENT_SERVICE_URL = var.incident_service_url
+      TABLE_MISSION             = aws_dynamodb_table.mission_assignment.name
+      TABLE_TIMELINE            = aws_dynamodb_table.mission_timeline.name
+      TABLE_OUTBOX              = aws_dynamodb_table.event_outbox.name
+      EVENT_BUS_NAME            = aws_cloudwatch_event_bus.mission_events.name
+      RESCUE_TEAM_SERVICE_URL   = var.rescue_team_service_url
+      RESCUE_TEAM_SERVICE_TOKEN = var.rescue_team_service_token
     }
   }
 
@@ -43,9 +44,14 @@ resource "aws_lambda_function" "get_mission" {
 
   environment {
     variables = {
-      TABLE_MISSION        = aws_dynamodb_table.mission_assignment.name
-      TABLE_TIMELINE       = aws_dynamodb_table.mission_timeline.name
-      INCIDENT_SERVICE_URL = var.incident_service_url
+      TABLE_MISSION                  = aws_dynamodb_table.mission_assignment.name
+      TABLE_TIMELINE                 = aws_dynamodb_table.mission_timeline.name
+      RESCUE_REQUEST_SERVICE_URL     = var.rescue_request_service_url
+      RESCUE_REQUEST_SERVICE_TOKEN   = var.rescue_request_service_token
+      MANAGE_DISPATCH_SERVICE_URL    = var.manage_dispatch_service_url
+      MANAGE_DISPATCH_SERVICE_TOKEN  = var.manage_dispatch_service_token
+      RESCUE_TEAM_SERVICE_URL        = var.rescue_team_service_url
+      RESCUE_TEAM_SERVICE_TOKEN      = var.rescue_team_service_token
     }
   }
 
@@ -223,8 +229,10 @@ resource "aws_lambda_function" "mission_assigned_handler" {
 
   environment {
     variables = {
-      TABLE_MISSION  = aws_dynamodb_table.mission_assignment.name
-      TABLE_TIMELINE = aws_dynamodb_table.mission_timeline.name
+      TABLE_MISSION                = aws_dynamodb_table.mission_assignment.name
+      TABLE_TIMELINE               = aws_dynamodb_table.mission_timeline.name
+      RESCUE_REQUEST_SERVICE_URL   = var.rescue_request_service_url
+      RESCUE_REQUEST_SERVICE_TOKEN = var.rescue_request_service_token
     }
   }
 
