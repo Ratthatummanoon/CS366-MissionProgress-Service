@@ -1,5 +1,6 @@
 export interface MissionAssignment {
   mission_id: string;
+  request_id: string;
   incident_id: string;
   rescue_team_id: string;
   current_status: MissionStatus;
@@ -23,6 +24,7 @@ export interface TimelineEntry {
 }
 
 export interface MissionDetailResponse {
+  request_id: string;
   incident_id: string;
   mission_id: string;
   rescue_team_id: string;
@@ -46,6 +48,7 @@ export interface ListMissionsResponse {
 export interface ProgressResponse {
   message: string;
   mission_id: string;
+  request_id: string;
   incident_id: string;
   old_status: string;
   new_status: string;
