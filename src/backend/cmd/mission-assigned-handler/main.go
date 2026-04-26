@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/google/uuid"
 
+	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/client"
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/models"
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/repository"
 )
@@ -24,17 +24,21 @@ type EventBridgeEvent struct {
 	Detail     json.RawMessage `json:"detail"`
 }
 
-// MissionAssignedPayload is the payload from Dispatch service.
+// MissionAssignedPayload คือ payload จาก DispatchOrderCreated event ของ Manage Dispatch Service
+// field names ใช้ camelCase ตาม Manage Dispatch contract
 type MissionAssignedPayload struct {
-	MissionID    string `json:"mission_id"`
-	RescueUnitID string `json:"rescue_unit_id"`
-	IncidentID   string `json:"incident_id"`
-	AssignedAt   string `json:"assigned_at"`
+	DispatchID    string `json:"dispatchId"`
+	RequestID     string `json:"requestId"`
+	TeamID        string `json:"teamId"`
+	PriorityLevel int    `json:"priorityLevel"`
+	Status        string `json:"status"`
+	DispatchedAt  string `json:"dispatchedAt"`
 }
 
 var (
-	missionRepo  *repository.MissionRepo
-	timelineRepo *repository.TimelineRepo
+	missionRepo         *repository.MissionRepo
+	timelineRepo        *repository.TimelineRepo
+	rescueRequestClient *client.RescueRequestClient
 )
 
 func init() {
@@ -49,6 +53,7 @@ func init() {
 
 	missionRepo = repository.NewMissionRepo(ddbClient, tableMission)
 	timelineRepo = repository.NewTimelineRepo(ddbClient, tableTimeline)
+	rescueRequestClient = client.NewRescueRequestClient()
 }
 
 func handler(ctx context.Context, event EventBridgeEvent) error {
@@ -61,47 +66,69 @@ func handler(ctx context.Context, event EventBridgeEvent) error {
 	}
 
 	// 2. Validate required fields
-	if payload.MissionID == "" || payload.IncidentID == "" || payload.RescueUnitID == "" {
-		return fmt.Errorf("missing required fields: mission_id=%s, incident_id=%s, rescue_unit_id=%s",
-			payload.MissionID, payload.IncidentID, payload.RescueUnitID)
+	if payload.DispatchID == "" || payload.RequestID == "" || payload.TeamID == "" {
+		return fmt.Errorf("missing required fields: dispatchId=%s, requestId=%s, teamId=%s",
+			payload.DispatchID, payload.RequestID, payload.TeamID)
 	}
 
-	assignedAt := payload.AssignedAt
+	assignedAt := payload.DispatchedAt
 	if assignedAt == "" {
 		assignedAt = "unknown"
 	}
 
-	// 3. Create mission record (idempotent — skip if already exists)
+	// 3. Idempotency check — query by dispatch_id (not by generated mission_id)
+	// EventBridge delivers at-least-once; the same DispatchOrderCreated event may arrive multiple times.
+	existing, err := missionRepo.GetMissionByDispatchID(ctx, payload.DispatchID)
+	if err != nil {
+		log.Printf("ERROR: idempotency check failed for dispatchId=%s: %v", payload.DispatchID, err)
+		return fmt.Errorf("idempotency check: %w", err)
+	}
+	if existing != nil {
+		log.Printf("INFO: Mission for dispatchId=%s already exists (missionId=%s) — skipping (idempotent)",
+			payload.DispatchID, existing.MissionID)
+		return nil
+	}
+
+	// 4. Fetch incidentId from RescueRequest Service (degraded: empty string on failure)
+	incidentID := ""
+	if requestDetail := rescueRequestClient.GetRequestDetail(ctx, payload.RequestID); requestDetail != nil {
+		incidentID = requestDetail.Master.IncidentID
+		log.Printf("INFO: Fetched incidentId=%s for requestId=%s", incidentID, payload.RequestID)
+	} else {
+		log.Printf("WARN: RescueRequestService unavailable for requestId=%s — incidentId will be empty", payload.RequestID)
+	}
+
+	// 5. Generate mission_id ใหม่ (Manage Dispatch ไม่ส่ง mission_id มาให้)
+	generatedMissionID := "MISS-" + uuid.New().String()[:8]
+
+	// 6. Create mission record
 	mission := &models.MissionAssignment{
-		MissionID:         payload.MissionID,
-		IncidentID:        payload.IncidentID,
-		RescueTeamID:      payload.RescueUnitID,
+		MissionID:         generatedMissionID,
+		DispatchID:        payload.DispatchID,
+		RequestID:         payload.RequestID,
+		IncidentID:        incidentID,
+		RescueTeamID:      payload.TeamID,
+		PriorityLevel:     payload.PriorityLevel,
 		CurrentStatus:     "DISPATCHED",
 		LatestImpactLevel: 0,
 		StartedAt:         assignedAt,
 		LastUpdatedAt:     assignedAt,
 	}
 
-	err := missionRepo.CreateMissionIdempotent(ctx, mission)
-	if err != nil {
-		// Check if it's a conditional check failure (already exists) — that's OK
-		if strings.Contains(err.Error(), "ConditionalCheckFailedException") {
-			log.Printf("INFO: Mission %s already exists — skipping (idempotent)", payload.MissionID)
-			return nil
-		}
+	if err := missionRepo.CreateMission(ctx, mission); err != nil {
 		return fmt.Errorf("create mission: %w", err)
 	}
 
-	log.Printf("INFO: Created mission %s for incident %s, team %s",
-		payload.MissionID, payload.IncidentID, payload.RescueUnitID)
+	log.Printf("INFO: Created mission %s for dispatch %s, team %s, incident %s",
+		generatedMissionID, payload.DispatchID, payload.TeamID, incidentID)
 
-	// 4. Create initial timeline entry
+	// 7. Create initial timeline entry
 	entry := &models.TimelineEntry{
-		MissionID:   payload.MissionID,
+		MissionID:   generatedMissionID,
 		Timestamp:   assignedAt,
 		LogID:       uuid.New().String(),
 		ActionType:  "MISSION_ASSIGNED",
-		Description: fmt.Sprintf("Mission assigned to %s", payload.RescueUnitID),
+		Description: fmt.Sprintf("Dispatch %s assigned to team %s", payload.DispatchID, payload.TeamID),
 		PerformedBy: "SYSTEM",
 	}
 
