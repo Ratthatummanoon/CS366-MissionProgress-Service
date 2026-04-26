@@ -10,99 +10,105 @@ MissionProgress Service คือบริการสำหรับทีม�
 - เป็น MVP สำหรับสาธิตในคาบเรียน Demo 1 เท่านั้น — **ยังไม่มี Frontend** ให้ทดสอบผ่าน `curl` หรือ Postman
 - Deploy บน AWS (API Gateway + Lambda + DynamoDB + EventBridge) ผ่าน Terraform
 - มี 2 Endpoints หลัก:
-  1. **GET** `/incidents/{incident_id}` — ดึงข้อมูลภารกิจ + Timeline (Synchronous)
-  2. **POST** `/incidents/{incident_id}/progress` — อัปเดตสถานะ + publish events (Sync + Async)
-- การเรียก IncidentTracking Service ของเพื่อนจะ timeout โดยตั้งใจ (Degraded Mode) → ตอบข้อมูลเฉพาะที่ตัวเองมี
+  1. **GET** `/missions/{request_id}` — ดึงข้อมูลภารกิจ + Timeline (Synchronous)
+  2. **POST** `/missions/{request_id}/progress` — อัปเดตสถานะ + publish events (Sync + Async)
+- การเรียก RescueRequest Service จะตอบเฉพาะข้อมูลที่ตัวเองมี (Degraded Mode) หากเรียกไม่สำเร็จ
 - ยังไม่มี: Frontend, S3 Upload, Outbox Processor (cron retry), Cognito
 
 ---
 
 ## การพึ่งพาบริการภายนอก (Dependencies)
 
-MissionProgress Service พึ่งพา **IncidentTracking Service** ของเพื่อนสำหรับดึงรายละเอียดเหตุการณ์ รายละเอียดจุดเชื่อมต่อและส่วนที่จำลอง (mock) มีดังนี้:
+MissionProgress Service พึ่งพา **RescueRequest Service** ของเพื่อนสำหรับดึงรายละเอียด Request รายละเอียดจุดเชื่อมต่อมีดังนี้:
 
 ### บริการที่พึ่งพา
 
-| รายการ            | รายละเอียด                                                      |
-| ----------------- | --------------------------------------------------------------- |
-| ชื่อบริการ        | **IncidentTracking Service**                                    |
-| เจ้าของบริการ     | **Krittamet Damthongkam**                                       |
-| ใช้ใน Endpoint    | `GET /incidents/{incident_id}`                                  |
-| วิธีเรียก         | HTTP GET ไปยัง `{INCIDENT_SERVICE_URL}/incidents/{incident_id}` |
-| Timeout           | 3 วินาที                                                        |
-| ไฟล์ที่เกี่ยวข้อง | `src/backend/internal/client/incident_client.go`                |
+| รายการ            | รายละเอียด                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| ชื่อบริการ        | **RescueRequest Service**                                                                    |
+| เจ้าของบริการ     | **Phattharaphum Kingchai**                                                                   |
+| ใช้ใน Endpoint    | `GET /missions/{request_id}`                                                                 |
+| วิธีเรียก         | HTTP GET ไปยัง `{RESCUE_REQUEST_SERVICE_URL}/v1/rescue-requests/{request_id}` + Bearer token |
+| Timeout           | 800 มิลลิวินาที + retry 2 ครั้ง                                                              |
+| ไฟล์ที่เกี่ยวข้อง | `src/backend/internal/client/rescue_request_client.go`                                       |
 
 ### API Contract ที่ใช้อ้างอิง
 
-MissionProgress Service เรียก IncidentTracking Service ผ่าน HTTP GET เพื่อดึงข้อมูลเหตุการณ์:
+MissionProgress Service เรียก RescueRequest Service ผ่าน HTTP GET เพื่อดึงข้อมูล Request:
 
 ```
-GET {INCIDENT_SERVICE_URL}/incidents/{incident_id}
+GET {RESCUE_REQUEST_SERVICE_URL}/v1/rescue-requests/{requestId}
+Authorization: Bearer <RESCUE_REQUEST_SERVICE_TOKEN>
 ```
 
-**Response ที่คาดหวังจาก IncidentTracking Service (HTTP 200):**
+**Response ที่คาดหวังจาก RescueRequest Service (HTTP 200):**
 
 ```json
 {
-  "incident_id": "INC-001",
-  "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
-  "location": "13.7563,100.5018",
-  "incident_type": "FLOOD"
+  "request": {
+    "requestId": "REQ-001",
+    "description": "น้ำท่วมหนักบริเวณถนนพหลโยธิน",
+    "location": {
+      "latitude": 13.7563,
+      "longitude": 100.5018
+    },
+    "requestType": "FLOOD"
+  }
 }
 ```
 
-| ฟิลด์           | ประเภท | คำอธิบาย                                     |
-| --------------- | ------ | -------------------------------------------- |
-| `incident_id`   | String | รหัสเหตุการณ์                                |
-| `description`   | String | คำอธิบายเหตุการณ์                            |
-| `location`      | String | พิกัด GPS ของเหตุการณ์                       |
-| `incident_type` | String | ประเภทเหตุการณ์ เช่น `FLOOD`, `FIRE` เป็นต้น |
+| ฟิลด์                 | ประเภท | คำอธิบาย                            |
+| --------------------- | ------ | ----------------------------------- |
+| `request.requestId`   | String | รหัส Request                        |
+| `request.description` | String | คำอธิบาย Request                    |
+| `request.location`    | Object | พิกัด GPS (`latitude`, `longitude`) |
+| `request.requestType` | String | ประเภท เช่น `FLOOD`, `FIRE` เป็นต้น |
 
-เมื่อเรียกสำเร็จ ฟิลด์เหล่านี้จะปรากฏใน response ของ `GET /incidents/{incident_id}` และ `data_source` จะเป็น `"full"`
+เมื่อเรียกสำเร็จ ฟิลด์เหล่านี้จะปรากฏใน response ของ `GET /missions/{request_id}` และ `data_source` จะเป็น `"full"`
 
 ### ส่วนที่ Mock ใน Demo 1
 
-> **สำคัญ:** ใน Demo 1 นี้ **IncidentTracking Service ยังไม่พร้อมใช้งานจริง** จึงมีการ mock/จำลองการทำงานดังนี้:
+> **สำคัญ:** ใน Demo 1 นี้ **RescueRequest Service ยังไม่ได้เชื่อมต่อ** จึงทำงานใน Degraded Mode:
 
-| ส่วน                     | สิ่งที่จำลอง (Mock)                                                                | วิธีการจำลอง                                                                   |
-| ------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **URL ของบริการ**        | ตัวแปร `INCIDENT_SERVICE_URL` ถูกตั้งค่าเป็น `http://localhost:9999` (placeholder) | กำหนดใน `terraform/variables.tf` → ส่งเป็น environment variable ของ Lambda     |
-| **พฤติกรรมการเรียก**     | HTTP Client จะ **timeout ภายใน 3 วินาที** เสมอ เพราะ URL ปลายทางไม่มีอยู่จริง      | ตั้ง timeout ใน `incident_client.go` → `http.Client{Timeout: 3 * time.Second}` |
-| **การตอบกลับ**           | ฟังก์ชัน `GetIncidentDetail()` คืนค่า `nil` (แทน response จริง)                    | เมื่อ HTTP call ล้มเหลว → return `nil` → ระบบเข้า Degraded Mode                |
-| **ข้อมูลที่หายไป**       | ฟิลด์ `description`, `location`, `incident_type` จะ**ไม่ปรากฏ**ใน response         | ฟิลด์เหล่านี้มี `omitempty` จึงไม่แสดงเมื่อเป็นค่าว่าง                         |
-| **ตัวบ่งชี้ใน response** | `data_source` จะเป็น `"partial"` เสมอ (แทนที่จะเป็น `"full"`)                      | โค้ดตั้ง `dataSource = "partial"` เมื่อ `GetIncidentDetail()` คืนค่า `nil`     |
+| ส่วน                     | สิ่งที่จำลอง (Mock)                                                                      | วิธีการจำลอง                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **URL ของบริการ**        | ตัวแปร `RESCUE_REQUEST_SERVICE_URL` ถูกตั้งค่าเป็น `http://localhost:9998` (placeholder) | กำหนดใน `terraform/variables.tf` → ส่งเป็น environment variable ของ Lambda |
+| **พฤติกรรมการเรียก**     | HTTP Client จะ **timeout ภายใน 800ms** + retry 2 ครั้ง เพราะ URL ปลายทางไม่มีอยู่จริง    | ตั้ง timeout ใน `rescue_request_client.go` → retry loop                    |
+| **การตอบกลับ**           | ฟังก์ชัน `GetRequestDetail()` คืนค่า `nil` (แทน response จริง)                           | เมื่อ HTTP call ล้มเหลว → return `nil` → ระบบเข้า Degraded Mode            |
+| **ข้อมูลที่หายไป**       | ฟิลด์ `description`, `location`, `requestType` จะ**ไม่ปรากฏ**ใน response                 | ฟิลด์เหล่านี้มี `omitempty` จึงไม่แสดงเมื่อเป็นค่าว่าง                     |
+| **ตัวบ่งชี้ใน response** | `data_source` จะเป็น `"partial"` เสมอ (แทนที่จะเป็น `"full"`)                            | โค้ดตั้ง `dataSource = "partial"` เมื่อ `GetRequestDetail()` คืนค่า `nil`  |
 
-### ผลกระทบต่อ Response ของ GET /incidents/{incident_id}
+### ผลกระทบต่อ Response ของ GET /missions/{request_id}
 
-| โหมด                       | `data_source` | ฟิลด์เพิ่มเติมจาก IncidentTracking                     |
-| -------------------------- | ------------- | ------------------------------------------------------ |
-| **Degraded Mode** (Demo 1) | `"partial"`   | ไม่มี — ขาด `description`, `location`, `incident_type` |
-| **Full Mode** (Demo 2+)    | `"full"`      | มีครบ — `description`, `location`, `incident_type`     |
+| โหมด                       | `data_source` | ฟิลด์เพิ่มเติมจาก RescueRequest Service              |
+| -------------------------- | ------------- | ---------------------------------------------------- |
+| **Degraded Mode** (Demo 1) | `"partial"`   | ไม่มี — ขาด `description`, `location`, `requestType` |
+| **Full Mode** (Demo 2+)    | `"full"`      | มีครบ — `description`, `location`, `requestType`     |
 
 ### Flow การทำงานใน Demo 1 (Degraded Mode)
 
 ```
-GET /incidents/{incident_id}
+GET /missions/{request_id}
         │
         ▼
   get-mission Lambda
         │
         ├── 1. ดึงข้อมูลภารกิจจาก DynamoDB (MissionAssignment) ✅
         ├── 2. ดึง Timeline จาก DynamoDB (MissionTimeline) ✅
-        ├── 3. เรียก IncidentTracking Service ❌ (timeout 3 วินาที)
+        ├── 3. เรียก RescueRequest Service ❌ (timeout 800ms × 3)
         │       └── return nil → Degraded Mode
         └── 4. ตอบกลับข้อมูลเฉพาะที่ตัวเองมี
-                └── data_source: "partial" (ขาดข้อมูลจาก IncidentTracking)
+                └── data_source: "partial" (ขาดข้อมูลจาก RescueRequest)
 ```
 
-### เมื่อ IncidentTracking Service พร้อมใช้งาน (Demo 2+)
+### เมื่อ RescueRequest Service พร้อมใช้งาน (Demo 2+)
 
-เมื่อเพื่อน deploy IncidentTracking Service แล้ว สามารถเปลี่ยน URL ได้โดย:
+เมื่อเพื่อน deploy RescueRequest Service แล้ว สามารถเปลี่ยน URL + Token ได้โดย:
 
-1. แก้ไขค่า `incident_service_url` ใน Terraform variables ให้ชี้ไปยัง URL จริง
+1. แก้ไขค่า `rescue_request_service_url` และ `rescue_request_service_token` ใน Terraform variables
 2. รัน `terraform apply` ใหม่
 
-ระบบจะเปลี่ยนจาก Degraded Mode เป็น Full Mode โดยอัตโนมัติ — `data_source` จะเป็น `"full"` และมีฟิลด์ `description`, `location`, `incident_type` ครบ
+ระบบจะเปลี่ยนจาก Degraded Mode เป็น Full Mode โดยอัตโนมัติ
 
 ---
 
@@ -146,7 +152,7 @@ HTTP/1.1 403 Forbidden
 
 ```bash
 curl -X GET \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA"
 ```
@@ -158,7 +164,7 @@ curl -X GET \
 ### Endpoint
 
 ```
-GET /incidents/{incident_id}
+GET /missions/{request_id}
 ```
 
 ### คำอธิบาย
@@ -167,23 +173,23 @@ GET /incidents/{incident_id}
 
 ### หมายเหตุ Demo 1 — Degraded Mode
 
-> ใน Demo 1 ระบบตั้ง `INCIDENT_SERVICE_URL` เป็น placeholder URL → **จะ timeout ภายใน 3 วินาที** แล้ว fallback เป็น Degraded Mode โดยอัตโนมัติ
+> ใน Demo 1 ระบบตั้ง `RESCUE_REQUEST_SERVICE_URL` เป็น placeholder URL → **จะ timeout ภายใน 800ms (retry 2x)** แล้ว fallback เป็น Degraded Mode โดยอัตโนมัติ
 >
 > ผลที่ได้:
 >
 > - `data_source` จะเป็น `"partial"` เสมอ
-> - ฟิลด์ `description`, `location`, `incident_type` จะ**ไม่ปรากฏ**ใน response (เพราะข้อมูลมาจาก IncidentTracking ซึ่งเรียกไม่สำเร็จ)
+> - ฟิลด์ `description`, `location`, `requestType` จะ**ไม่ปรากฏ**ใน response (เพราะข้อมูลมาจาก RescueRequest ซึ่งเรียกไม่สำเร็จ)
 > - ข้อมูลที่แสดงจะเป็นเฉพาะข้อมูลที่บริการนี้ถือครองเอง (mission + timeline)
 >
-> เมื่อ IncidentTracking Service พร้อมใช้งานจริง → `data_source` จะเป็น `"full"` และมีฟิลด์จาก IncidentTracking ครบ
+> เมื่อ RescueRequest Service พร้อมใช้งานจริง → `data_source` จะเป็น `"full"` และมีฟิลด์จาก RescueRequest ครบ
 
 ### Request
 
 **Path Parameters:**
 
-| พารามิเตอร์   | ประเภท | จำเป็น | คำอธิบาย                     |
-| ------------- | ------ | ------ | ---------------------------- |
-| `incident_id` | UUID   | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
+| พารามิเตอร์  | ประเภท | จำเป็น | คำอธิบาย                                              |
+| ------------ | ------ | ------ | ----------------------------------------------------- |
+| `request_id` | String | ✅     | รหัส request จาก RescueRequest Service เช่น `REQ-003` |
 
 **Headers:** ดูหัวข้อ [2. Authentication](#2-authentication-จำเป็นสำหรับทุก-request)
 
@@ -193,7 +199,7 @@ GET /incidents/{incident_id}
 
 ```json
 {
-  "incident_id": "INC-003",
+  "incident_id": "REQ-003",
   "mission_id": "MSN-003",
   "rescue_team_id": "TEAM-CHARLIE",
   "current_status": "ON_SITE",
@@ -236,20 +242,20 @@ GET /incidents/{incident_id}
 
 ### คำอธิบายฟิลด์ Response
 
-| ฟิลด์                 | ประเภท   | คำอธิบาย                                                                          |
-| --------------------- | -------- | --------------------------------------------------------------------------------- |
-| `incident_id`         | UUID     | รหัสเหตุการณ์                                                                     |
-| `mission_id`          | UUID     | รหัสภารกิจ                                                                        |
-| `rescue_team_id`      | String   | รหัสทีมกู้ภัยที่รับผิดชอบ                                                         |
-| `current_status`      | String   | สถานะปัจจุบันของภารกิจ                                                            |
-| `latest_impact_level` | Integer  | ระดับความรุนแรงล่าสุดที่ประเมิน (1–4)                                             |
-| `started_at`          | DateTime | เวลาที่เริ่มรับภารกิจ                                                             |
-| `last_updated_at`     | DateTime | เวลาอัปเดตล่าสุด                                                                  |
-| `description`         | String   | คำอธิบายเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_              |
-| `location`            | String   | พิกัดเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                 |
-| `incident_type`       | String   | ประเภทเหตุการณ์ _(จาก IncidentTracking — ไม่แสดงใน Degraded Mode)_                |
-| `timeline`            | Array    | รายการ Timeline การปฏิบัติงาน (เรียงตามเวลา)                                      |
-| `data_source`         | String   | `"full"` = ข้อมูลครบ, `"partial"` = Degraded Mode (ขาดข้อมูลจาก IncidentTracking) |
+| ฟิลด์                 | ประเภท   | คำอธิบาย                                                                       |
+| --------------------- | -------- | ------------------------------------------------------------------------------ |
+| `incident_id`         | UUID     | รหัสเหตุการณ์                                                                  |
+| `mission_id`          | UUID     | รหัสภารกิจ                                                                     |
+| `rescue_team_id`      | String   | รหัสทีมกู้ภัยที่รับผิดชอบ                                                      |
+| `current_status`      | String   | สถานะปัจจุบันของภารกิจ                                                         |
+| `latest_impact_level` | Integer  | ระดับความรุนแรงล่าสุดที่ประเมิน (1–4)                                          |
+| `started_at`          | DateTime | เวลาที่เริ่มรับภารกิจ                                                          |
+| `last_updated_at`     | DateTime | เวลาอัปเดตล่าสุด                                                               |
+| `description`         | String   | คำอธิบาย Request _(จาก RescueRequest — ไม่แสดงใน Degraded Mode)_               |
+| `location`            | String   | พิกัด Request _(จาก RescueRequest — ไม่แสดงใน Degraded Mode)_                  |
+| `requestType`         | String   | ประเภท Request _(จาก RescueRequest — ไม่แสดงใน Degraded Mode)_                 |
+| `timeline`            | Array    | รายการ Timeline การปฏิบัติงาน (เรียงตามเวลา)                                   |
+| `data_source`         | String   | `"full"` = ข้อมูลครบ, `"partial"` = Degraded Mode (ขาดข้อมูลจาก RescueRequest) |
 
 **ฟิลด์ใน Timeline Entry:**
 
@@ -265,13 +271,13 @@ GET /incidents/{incident_id}
 
 ### Response — Error (404 Not Found)
 
-เมื่อไม่พบ incident_id ในระบบ:
+เมื่อไม่พบ request_id ในระบบ:
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "error": "REQUEST_NOT_FOUND",
+  "code": "REQUEST_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999"
 }
 ```
 
@@ -283,7 +289,7 @@ GET /incidents/{incident_id}
 {
   "error": "MISSING_PARAMETER",
   "code": "MISSING_PARAMETER",
-  "message": "incident_id is required"
+  "message": "request_id is required"
 }
 ```
 
@@ -293,7 +299,7 @@ GET /incidents/{incident_id}
 
 ```bash
 curl -X GET \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-003" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-003" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-CHARLIE"
 ```
@@ -302,7 +308,8 @@ curl -X GET \
 
 ```json
 {
-  "incident_id": "INC-003",
+  "request_id": "REQ-003",
+  "incident_id": "REQ-003",
   "mission_id": "MSN-003",
   "rescue_team_id": "TEAM-CHARLIE",
   "current_status": "ON_SITE",
@@ -314,11 +321,11 @@ curl -X GET \
 }
 ```
 
-#### ❌ ล้มเหลว — ดึงข้อมูล incident_id ที่ไม่มีในระบบ
+#### ❌ ล้มเหลว — ดึงข้อมูล request_id ที่ไม่มีในระบบ
 
 ```bash
 curl -X GET \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-99999" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-99999" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA"
 ```
@@ -327,9 +334,9 @@ curl -X GET \
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "error": "REQUEST_NOT_FOUND",
+  "code": "REQUEST_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999"
 }
 ```
 
@@ -337,7 +344,7 @@ curl -X GET \
 
 ```bash
 curl -X GET \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001"
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001"
 ```
 
 ผลลัพธ์ที่คาดหวัง (HTTP 403):
@@ -352,7 +359,7 @@ curl -X GET \
 
 ```bash
 curl -X GET \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001" \
   -H "x-api-key: <your-api-key>"
 ```
 
@@ -371,7 +378,7 @@ curl -X GET \
 ### Endpoint
 
 ```
-POST /incidents/{incident_id}/progress
+POST /missions/{request_id}/progress
 ```
 
 ### คำอธิบาย
@@ -388,9 +395,9 @@ POST /incidents/{incident_id}/progress
 
 **Path Parameters:**
 
-| พารามิเตอร์   | ประเภท | จำเป็น | คำอธิบาย                     |
-| ------------- | ------ | ------ | ---------------------------- |
-| `incident_id` | UUID   | ✅     | รหัสเหตุการณ์ เช่น `INC-001` |
+| พารามิเตอร์  | ประเภท | จำเป็น | คำอธิบาย                                              |
+| ------------ | ------ | ------ | ----------------------------------------------------- |
+| `request_id` | String | ✅     | รหัส request จาก RescueRequest Service เช่น `REQ-003` |
 
 **Headers:** ดูหัวข้อ [2. Authentication](#2-authentication-จำเป็นสำหรับทุก-request)
 
@@ -441,22 +448,23 @@ DISPATCHED → EN_ROUTE → ON_SITE → RESOLVED
 ```json
 {
   "message": "Progress reported successfully",
+  "request_id": "REQ-001",
   "mission_id": "MSN-001",
-  "incident_id": "INC-001",
+  "incident_id": "REQ-001",
   "old_status": "DISPATCHED",
   "new_status": "EN_ROUTE",
   "updated_at": "2024-12-01T12:00:00Z"
 }
 ```
 
-| ฟิลด์         | ประเภท   | คำอธิบาย            |
-| ------------- | -------- | ------------------- |
-| `message`     | String   | ข้อความยืนยันสำเร็จ |
-| `mission_id`  | UUID     | รหัสภารกิจที่อัปเดต |
-| `incident_id` | UUID     | รหัสเหตุการณ์       |
-| `old_status`  | String   | สถานะเดิมก่อนอัปเดต |
-| `new_status`  | String   | สถานะใหม่หลังอัปเดต |
-| `updated_at`  | DateTime | เวลาที่อัปเดตสำเร็จ |
+| ฟิลด์        | ประเภท   | คำอธิบาย            |
+| ------------ | -------- | ------------------- |
+| `message`    | String   | ข้อความยืนยันสำเร็จ |
+| `mission_id` | UUID     | รหัสภารกิจที่อัปเดต |
+| `request_id` | UUID     | รหัสเหตุการณ์       |
+| `old_status` | String   | สถานะเดิมก่อนอัปเดต |
+| `new_status` | String   | สถานะใหม่หลังอัปเดต |
+| `updated_at` | DateTime | เวลาที่อัปเดตสำเร็จ |
 
 ### Response — Error (400 Bad Request): Invalid State Transition
 
@@ -500,9 +508,9 @@ DISPATCHED → EN_ROUTE → ON_SITE → RESOLVED
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "error": "REQUEST_NOT_FOUND",
+  "code": "REQUEST_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999"
 }
 ```
 
@@ -512,7 +520,7 @@ DISPATCHED → EN_ROUTE → ON_SITE → RESOLVED
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
   -H "Content-Type: application/json" \
@@ -529,7 +537,7 @@ curl -X POST \
 {
   "message": "Progress reported successfully",
   "mission_id": "MSN-001",
-  "incident_id": "INC-001",
+  "incident_id": "REQ-001",
   "old_status": "DISPATCHED",
   "new_status": "EN_ROUTE",
   "updated_at": "2025-..."
@@ -540,7 +548,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-003/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-003/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-CHARLIE" \
   -H "Content-Type: application/json" \
@@ -558,7 +566,7 @@ curl -X POST \
 {
   "message": "Progress reported successfully",
   "mission_id": "MSN-003",
-  "incident_id": "INC-003",
+  "incident_id": "REQ-003",
   "old_status": "ON_SITE",
   "new_status": "NEED_BACKUP",
   "updated_at": "2025-..."
@@ -569,7 +577,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-002/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/INC-002/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-BRAVO" \
   -H "Content-Type: application/json" \
@@ -590,7 +598,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
   -H "Content-Type: application/json" \
@@ -611,7 +619,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
   -H "Content-Type: application/json" \
@@ -628,11 +636,11 @@ curl -X POST \
 }
 ```
 
-#### ❌ ล้มเหลว — incident_id ไม่มีในระบบ
+#### ❌ ล้มเหลว — request_id ไม่มีในระบบ
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-99999/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-99999/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
   -H "Content-Type: application/json" \
@@ -643,9 +651,9 @@ curl -X POST \
 
 ```json
 {
-  "error": "INCIDENT_NOT_FOUND",
-  "code": "INCIDENT_NOT_FOUND",
-  "message": "No mission found for incident: INC-99999"
+  "error": "REQUEST_NOT_FOUND",
+  "code": "REQUEST_NOT_FOUND",
+  "message": "No mission found for request: REQ-99999"
 }
 ```
 
@@ -653,7 +661,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-001/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/REQ-001/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ALPHA" \
   -H "Content-Type: application/json" \
@@ -674,7 +682,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/incidents/INC-005/progress" \
+  "https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/missions/INC-005/progress" \
   -H "x-api-key: <your-api-key>" \
   -H "X-Rescue-Team-ID: TEAM-ECHO" \
   -H "Content-Type: application/json" \
@@ -695,7 +703,7 @@ curl -X POST \
 
 ## 5. Asynchronous Events Contract (EventBridge)
 
-เมื่อ POST `/incidents/{incident_id}/progress` สำเร็จ ระบบจะ publish events ไปยัง Amazon EventBridge **แบบ asynchronous** (ไม่กระทบ response ที่ตอบกลับผู้เรียก)
+เมื่อ POST `/missions/{request_id}/progress` สำเร็จ ระบบจะ publish events ไปยัง Amazon EventBridge **แบบ asynchronous** (ไม่กระทบ response ที่ตอบกลับผู้เรียก)
 
 ### ข้อมูล Event Bus
 
@@ -724,7 +732,7 @@ curl -X POST \
 ```
 {
   "mission_id": "MSN-001",
-  "incident_id": "INC-001",
+  "incident_id": "REQ-001",
   "rescue_team_id": "TEAM-ALPHA",
   "old_status": "DISPATCHED",
   "new_status": "EN_ROUTE",
@@ -751,7 +759,7 @@ curl -X POST \
   "detail-type": "MissionStatusChanged",
   "detail": {
     "mission_id": "MSN-001",
-    "incident_id": "INC-001",
+    "incident_id": "REQ-001",
     "rescue_team_id": "TEAM-ALPHA",
     "old_status": "DISPATCHED",
     "new_status": "EN_ROUTE",
@@ -774,7 +782,7 @@ curl -X POST \
 ```json
 {
   "mission_id": "MSN-003",
-  "incident_id": "INC-003",
+  "incident_id": "REQ-003",
   "rescue_team_id": "TEAM-CHARLIE",
   "requested_at": "2024-12-01T10:30:00Z",
   "requested_by": "TEAM-CHARLIE",
@@ -806,7 +814,7 @@ curl -X POST \
 ```json
 {
   "mission_id": "MSN-003",
-  "incident_id": "INC-003",
+  "incident_id": "REQ-003",
   "rescue_team_id": "TEAM-CHARLIE",
   "old_level": 3,
   "new_level": 4,
@@ -831,21 +839,21 @@ curl -X POST \
 
 ## สรุปภาพรวม Endpoints
 
-| Method | Path                                | คำอธิบาย                     | ประเภท       |
-| ------ | ----------------------------------- | ---------------------------- | ------------ |
-| GET    | `/incidents/{incident_id}`          | ดึงข้อมูลภารกิจ + Timeline   | Synchronous  |
-| POST   | `/incidents/{incident_id}/progress` | อัปเดตสถานะ + publish events | Sync + Async |
+| Method | Path                              | คำอธิบาย                     | ประเภท       |
+| ------ | --------------------------------- | ---------------------------- | ------------ |
+| GET    | `/missions/{request_id}`          | ดึงข้อมูลภารกิจ + Timeline   | Synchronous  |
+| POST   | `/missions/{request_id}/progress` | อัปเดตสถานะ + publish events | Sync + Async |
 
 ## สรุป Error Codes
 
 | HTTP Status | Error Code                 | สาเหตุ                                 |
 | ----------- | -------------------------- | -------------------------------------- |
-| 400         | `MISSING_PARAMETER`        | ไม่ส่ง incident_id หรือ new_status     |
+| 400         | `MISSING_PARAMETER`        | ไม่ส่ง request_id หรือ new_status      |
 | 400         | `INVALID_BODY`             | JSON body ไม่ถูกต้อง                   |
 | 400         | `INVALID_STATUS`           | new_status ไม่ใช่สถานะที่กำหนด         |
 | 400         | `INVALID_STATE_TRANSITION` | เปลี่ยนสถานะไม่ตรงตามกฎ State Machine  |
 | 403         | —                          | ไม่ส่ง x-api-key หรือ X-Rescue-Team-ID |
-| 404         | `INCIDENT_NOT_FOUND`       | ไม่พบภารกิจสำหรับ incident_id ที่ระบุ  |
+| 404         | `REQUEST_NOT_FOUND`        | ไม่พบภารกิจสำหรับ request_id ที่ระบุ   |
 | 500         | `INTERNAL_ERROR`           | เกิดข้อผิดพลาดภายในระบบ                |
 
 ---
@@ -857,14 +865,14 @@ curl -X POST \
 | 1   | ส่ง API Key + Team ID ถูกต้อง                 | ✅ สำเร็จ  | 200         | ได้รับข้อมูลภารกิจ               |
 | 2   | ไม่ส่ง API Key                                | ❌ ล้มเหลว | 403         | `Forbidden`                      |
 | 3   | ไม่ส่ง X-Rescue-Team-ID                       | ❌ ล้มเหลว | 403         | `User is not authorized...`      |
-| 4   | GET ภารกิจที่มีอยู่ (INC-003)                 | ✅ สำเร็จ  | 200         | ข้อมูลภารกิจ + Timeline          |
-| 5   | GET ภารกิจที่ไม่มี (INC-99999)                | ❌ ล้มเหลว | 404         | `INCIDENT_NOT_FOUND`             |
+| 4   | GET ภารกิจที่มีอยู่ (REQ-003)                 | ✅ สำเร็จ  | 200         | ข้อมูลภารกิจ + Timeline          |
+| 5   | GET ภารกิจที่ไม่มี (REQ-99999)                | ❌ ล้มเหลว | 404         | `REQUEST_NOT_FOUND`              |
 | 6   | POST transition ถูกต้อง (DISPATCHED→EN_ROUTE) | ✅ สำเร็จ  | 200         | `Progress reported successfully` |
 | 7   | POST NEED_BACKUP + ImpactLevel                | ✅ สำเร็จ  | 200         | `Progress reported successfully` |
 | 8   | POST transition ผิดกฎ (EN_ROUTE→RESOLVED)     | ❌ ล้มเหลว | 400         | `INVALID_STATE_TRANSITION`       |
 | 9   | POST ไม่ส่ง new_status                        | ❌ ล้มเหลว | 400         | `MISSING_PARAMETER`              |
 | 10  | POST ส่ง status ที่ไม่มีในระบบ                | ❌ ล้มเหลว | 400         | `INVALID_STATUS`                 |
-| 11  | POST incident_id ไม่มีในระบบ                  | ❌ ล้มเหลว | 404         | `INCIDENT_NOT_FOUND`             |
+| 11  | POST request_id ไม่มีในระบบ                   | ❌ ล้มเหลว | 404         | `REQUEST_NOT_FOUND`              |
 | 12  | POST ส่ง JSON ไม่ถูกต้อง                      | ❌ ล้มเหลว | 400         | `INVALID_BODY`                   |
 | 13  | POST อัปเดตภารกิจที่ RESOLVED แล้ว            | ❌ ล้มเหลว | 400         | `INVALID_STATE_TRANSITION`       |
 
