@@ -76,7 +76,7 @@ resource "aws_lambda_function" "authorizer" {
 
   environment {
     variables = {
-      VALID_API_KEY = var.api_key_value
+      VALID_API_KEY = local.api_key_value
     }
   }
 
