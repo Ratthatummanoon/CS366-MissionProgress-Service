@@ -28,15 +28,18 @@
 > **ManageDispatch (Noppakron) จัดทีมให้ request เสร็จแล้ว → แจ้ง MP**
 
 ```
-🟣 MD publish "DispatchOrderCreated" เข้า Default EventBridge (bus สาธารณะของทุก service)
+🟣 MD publish "DispatchOrderCreated" เข้า rescue.mission.dispatch.v1 (AWS EventBridge)
+        ↓ fields ที่ MD ส่งมาทั้งหมด:
+        dispatchId, status, requestId, teamId,
+        requestType, priorityLevel, evaluateReason,
+        location, description, peopleCount, specialNeeds,
+        lastEvaluatedAt, dispatchedAt
         ↓
-🔴 MP consume event นี้ → ได้รับ:
+🔴 MP consume event นี้ → ใช้เฉพาะ fields ที่จำเป็น:
         dispatchId    — รหัสคำสั่งการ
         requestId     — request ที่ต้องช่วย
         teamId        — ทีมที่ถูกส่ง
         priorityLevel — ระดับความสำคัญ
-        status        — สถานะ dispatch
-        dispatchedAt  — เวลาที่ส่ง
         ↓
 🔵 MP เรียก RescueRequest Service ทันที (GET /v1/rescue-requests/{requestId})
    → เพื่อดึง incidentId มาเก็บไว้ใน Mission
