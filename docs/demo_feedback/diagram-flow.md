@@ -12,7 +12,7 @@ graph LR
 
     %% ===== Event Bus / Queues =====
     EB[["📨 mission-progress-events<br/>(Custom EventBridge Bus)"]]
-    DEFAULT_EB[["📨 default event bus<br/>(AWS EventBridge)"]]
+    DEFAULT_EB[["📨 rescue.mission.dispatch.v1<br/>(AWS EventBridge)"]]
     IT_SQS[["📬 IncidentTracking SQS<br/>(owned by Krittamet)"]]
     MD_SQS[["📬 ManageDispatch SQS<br/>(owned by Noppakron)"]]
     PR_SQS[["📬 Prioritization SQS<br/>(owned by Nattasak)"]]
@@ -34,8 +34,8 @@ graph LR
     MP -->|"🔵 PATCH /v1/teams/{teamId}/status<br/>body: {status: AVAILABLE}<br/>fire-and-forget on RESOLVED"| RT
 
     %% ===== Async Inbound: ManageDispatch → MP =====
-    MD -->|"🟣 publish: DispatchOrderCreated<br/>fields: dispatchId, requestId,<br/>teamId, priorityLevel,<br/>status, dispatchedAt"| DEFAULT_EB
-    DEFAULT_EB -->|"🔴 consume: DispatchOrderCreated<br/>→ create Mission status: DISPATCHED<br/>fields: dispatchId, requestId,<br/>teamId, priorityLevel,<br/>status, dispatchedAt"| MP
+    MD -->|"🟣 publish: DispatchOrderCreated<br/>fields: dispatchId, status, requestId,<br/>teamId, requestType, priorityLevel,<br/>evaluateReason, location, description,<br/>peopleCount, specialNeeds,<br/>lastEvaluatedAt, dispatchedAt"| DEFAULT_EB
+    DEFAULT_EB -->|"🔴 consume: DispatchOrderCreated<br/>→ create Mission status: DISPATCHED<br/>fields: dispatchId, requestId,<br/>teamId, priorityLevel"| MP
 
     %% ===== Async Outbound: MP → Custom EventBridge =====
     MP -->|"🟣 publish: MissionStatusChanged<br/>fields: schema_version, mission_id,<br/>requestId, incident_id, rescue_team_id,<br/>old_status, new_status,<br/>changed_at, changed_by<br/>transitions:<br/>DISPATCHED→EN_ROUTE<br/>EN_ROUTE→ON_SITE<br/>ON_SITE→RESOLVED<br/>NEED_BACKUP→ON_SITE<br/>NEED_BACKUP→RESOLVED"| EB
