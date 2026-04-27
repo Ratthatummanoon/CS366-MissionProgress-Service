@@ -4,6 +4,7 @@ package models
 type MissionStatusChangedEvent struct {
 	SchemaVersion string `json:"schema_version"`
 	MissionID     string `json:"mission_id"`
+	RequestID     string `json:"requestId"`
 	IncidentID    string `json:"incident_id"`
 	RescueTeamID  string `json:"rescue_team_id"`
 	OldStatus     string `json:"old_status"`
