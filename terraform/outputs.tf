@@ -5,7 +5,7 @@ output "api_gateway_invoke_url" {
 
 output "api_key_value" {
   description = "API Key value for authentication"
-  value       = var.api_key_value
+  value       = local.api_key_value
   sensitive   = true
 }
 
