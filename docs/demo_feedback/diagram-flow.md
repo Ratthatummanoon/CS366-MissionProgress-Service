@@ -14,7 +14,7 @@ graph LR
     EB[["📨 mission-progress-events<br/>(Custom EventBridge Bus)"]]
     DEFAULT_EB[["📨 default event bus<br/>(AWS EventBridge)"]]
     IT_SQS[["📬 IncidentTracking SQS<br/>(owned by Krittamet)"]]
-    MD_SQS[["📬 Dispatch SQS<br/>(owned by Noppakron)"]]
+    MD_SQS[["📬 ManageDispatch SQS<br/>(owned by Noppakron)"]]
     PR_SQS[["📬 Prioritization SQS<br/>(owned by Nattasak)"]]
 
     %% ===== Sync Inbound: Frontend → MP (POST /missions/{request_id}/progress) =====
