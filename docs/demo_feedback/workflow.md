@@ -58,16 +58,20 @@ Step 6: ฉันสร้าง Mission สำเร็จ
 
 ---
 
-## � Phase 3.5: RescueTeam รายงานสถานะจากหน้างาน (Sync Inbound)
+## 🖥️ Phase 3.5: ทีมกู้ภัยกดปุ่มบน Dashboard (Sync Inbound)
 
 ```
-RescueTeam (กมลพันธ์) เรียก POST /progress เพื่ออัปเดตสถานะภารกิจ
+ทีมกู้ภัยกดปุ่มเปลี่ยนสถานะบน Rescue Team Dashboard (Frontend ของฉัน)
+   │
+   ▼
+Frontend เรียก POST /missions/{request_id}/progress
+headers: x-api-key, X-Rescue-Team-ID (teamId ของทีม)
 fields: new_status, new_impact_level, image_key
 
-→ ฉัน respond: 200 updated mission status
+→ ฉัน respond: 200 (mission_id, request_id, old_status, new_status, updated_at)
 ```
 
-> ⚠️ ทุก status transition และ impact level change ใน Phase 4-7 ถูก trigger โดย RescueTeam เรียก endpoint นี้
+> ⚠️ ทุก status transition และ impact level change ใน Phase 4-7 ถูก trigger โดย **Frontend (Dashboard)** เรียก endpoint นี้ — ไม่ใช่ RescueTeam Service โดยตรง
 
 ---
 
