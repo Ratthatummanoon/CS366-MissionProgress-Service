@@ -137,6 +137,7 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	publisher.PublishMissionStatusChanged(ctx, models.MissionStatusChangedEvent{
 		SchemaVersion: "1.0",
 		MissionID:     mission.MissionID,
+		RequestID:     mission.RequestID,
 		IncidentID:    mission.IncidentID,
 		RescueTeamID:  mission.RescueTeamID,
 		OldStatus:     oldStatus,
