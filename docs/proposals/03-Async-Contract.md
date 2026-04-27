@@ -40,6 +40,7 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
   "detail": {
     "schema_version": "1.0",
     "mission_id": "MSN-001",
+    "requestId": "REQ-8812-9901",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
     "old_status": "EN_ROUTE",
@@ -61,6 +62,7 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 | detail-type           | String          | ✅       | MissionStatusChanged            |
 | detail.schema_version | String          | ✅       | Schema version (current: "1.0") |
 | detail.mission_id     | String          | ✅       | รหัสภารกิจ                      |
+| detail.requestId      | String          | ✅       | รหัส request จาก RescueRequest  |
 | detail.incident_id    | String          | ✅       | รหัสเหตุการณ์                   |
 | detail.rescue_team_id | String          | ✅       | ทีมกู้ภัย                       |
 | detail.old_status     | String          | ✅       | สถานะเดิม                       |
