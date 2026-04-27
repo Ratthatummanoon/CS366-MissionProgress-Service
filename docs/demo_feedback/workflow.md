@@ -58,7 +58,20 @@ Step 6: ฉันสร้าง Mission สำเร็จ
 
 ---
 
-## 🟣 Phase 4: ติดตามภารกิจ → ส่ง Event ออก (Async Outbound)
+## � Phase 3.5: RescueTeam รายงานสถานะจากหน้างาน (Sync Inbound)
+
+```
+RescueTeam (กมลพันธ์) เรียก POST /progress เพื่ออัปเดตสถานะภารกิจ
+fields: new_status, new_impact_level, image_key
+
+→ ฉัน respond: 200 updated mission status
+```
+
+> ⚠️ ทุก status transition และ impact level change ใน Phase 4-7 ถูก trigger โดย RescueTeam เรียก endpoint นี้
+
+---
+
+## �🟣 Phase 4: ติดตามภารกิจ → ส่ง Event ออก (Async Outbound)
 
 ### Step 7: ทีมออกเดินทาง → ถึงหน้างาน
 
@@ -136,12 +149,23 @@ Step 10: ทีม ON_SITE แจ้งว่าไม่พอ → ON_SITE → 
 
 > **🔄 นี่คือจุดที่ flow วนกลับ!**
 
+```
+Step 10b: ทีมเสริมถึงหน้างาน → Mission เดิม: NEED_BACKUP → ON_SITE
+
+ฉัน publish "MissionStatusChanged" → Custom EventBridge
+   │
+   ├──→ CloudWatch Logs (บันทึก log เสมอ)
+   │
+   └──→ IncidentTracking SQS → Krittamet รับไปอัปเดต incident
+```
+
 ---
 
 ## ⚠️ Phase 7: ความรุนแรงเปลี่ยน
 
 ```
-Step 11: สถานการณ์เปลี่ยน เช่น น้ำท่วมหนักขึ้น
+Step 11: RescueTeam เรียก POST /progress ด้วย new_impact_level
+         สถานการณ์เปลี่ยน เช่น น้ำท่วมหนักขึ้น
          impact: LOW → HIGH
 
 ฉัน publish "ImpactLevelUpdated" → Custom EventBridge
