@@ -88,11 +88,13 @@
 }
 ```
 
-| Field              | Type          | Required | คำอธิบาย                                                                     |
-| :----------------- | :------------ | :------: | :--------------------------------------------------------------------------- |
-| `new_status`       | String (Enum) |    ✅    | สถานะใหม่: `EN_ROUTE`, `ON_SITE`, `NEED_BACKUP`, `RESOLVED`                  |
-| `note`             | String        |    ❌    | รายละเอียดการปฏิบัติงาน / หมายเหตุ                                           |
-| `new_impact_level` | String        |    ❌    | ระดับความรุนแรงใหม่จากการประเมินหน้างาน → publish `ImpactLevelUpdated` event |
+| Field              | Type          | Required | คำอธิบาย                                                                                  |
+| :----------------- | :------------ | :------: | :---------------------------------------------------------------------------------------- |
+| `new_status`       | String (Enum) |    ✅    | สถานะใหม่: `EN_ROUTE`, `ON_SITE`, `NEED_BACKUP`, `RESOLVED`                               |
+| `note`             | String        |    ❌    | รายละเอียดการปฏิบัติงาน / หมายเหตุ                                                        |
+| `new_impact_level` | Integer       |    ❌    | ระดับความรุนแรงใหม่จากการประเมินหน้างาน (ตัวเลข) → publish `ImpactLevelUpdated` event     |
+| `current_location` | String        |    ❌    | พิกัดปัจจุบันของทีม (GPS string) บันทึกลง Timeline entry                                  |
+| `image_key`        | String        |    ❌    | S3 Key ของรูปภาพหลักฐาน (ได้จาก `presigned-url` API) → เชื่อม Evidence กับ Timeline entry |
 
 ---
 
@@ -135,8 +137,8 @@ X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
 
 ```json
 {
-  "error": "INVALID_REQUEST_BODY",
-  "code": "INVALID_REQUEST_BODY",
+  "error": "MISSING_PARAMETER",
+  "code": "MISSING_PARAMETER",
   "message": "new_status is required",
   "traceId": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 }
@@ -364,11 +366,12 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 
 ## Dependency / Reliability
 
-| ประเภท                   | รายละเอียด                                                                                                                                            |
-| :----------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Internal Data (Read)** | อ่าน MissionAssignment table (state) + MissionTimeline table (timeline เรียงตาม timestamp)                                                            |
-| **External Dependency**  | HTTP GET → RescueRequest Service (`GET /v1/rescue-requests/{requestId}`) เพื่อดึง description, location, requestType (timeout: 800ms + retry 2 ครั้ง) |
-| **Degraded Mode**        | RescueRequest Service ล่ม/timeout → ส่งข้อมูลเฉพาะที่มี → `data_source: "partial"`                                                                    |
+| ประเภท                   | รายละเอียด                                                                                                                                                                                                                                             |
+| :----------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Internal Data (Read)** | อ่าน MissionAssignment table (state) + MissionTimeline table (timeline เรียงตาม timestamp)                                                                                                                                                             |
+| **External Dependency**  | HTTP GET ไปยัง 3 services **แบบ parallel** (sync.WaitGroup, timeout 800ms + retry 2x ต่อ service): RescueRequest (`GET /v1/rescue-requests/{requestId}`), ManageDispatch (`GET /v1/dispatches?teamId={teamId}`), RescueTeam (`GET /v1/teams/{teamId}`) |
+| **Degraded Mode**        | Service ใด service หนึ่งล่ม/timeout → `data_source: "partial"`, omitempty fields หายไปจาก response                                                                                                                                                     |
+| **Full Mode Condition**  | เรียก RescueRequest + ManageDispatch + RescueTeam สำเร็จทั้ง 3 → `data_source: "full"`                                                                                                                                                                 |
 
 ---
 
@@ -385,6 +388,7 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 | **Path**   | `/missions/{request_id}/presigned-url` |
 | **Type**   | Synchronous                            |
 | **Lambda** | `presigned-url` (Go)                   |
+| **Demo 2** | ✅ Implemented                         |
 
 ## คำอธิบาย
 
@@ -563,13 +567,14 @@ curl -X POST \
 
 ## ข้อมูลทั่วไป
 
-| รายการ     | ค่า                                                               |
-| :--------- | :---------------------------------------------------------------- |
-| **Name**   | `listTeamMissions`                                                |
-| **Method** | `GET`                                                             |
-| **Path**   | `/missions`                                                       |
-| **Type**   | Synchronous                                                       |
-| **Lambda** | `get-mission` (Go) — เพิ่ม handler path ใหม่ หรือ แยก Lambda ใหม่ |
+| รายการ     | ค่า                  |
+| :--------- | :------------------- |
+| **Name**   | `listTeamMissions`   |
+| **Method** | `GET`                |
+| **Path**   | `/missions`          |
+| **Type**   | Synchronous          |
+| **Lambda** | `list-missions` (Go) |
+| **Demo 2** | ✅ Implemented       |
 
 ## คำอธิบาย
 
@@ -581,15 +586,14 @@ curl -X POST \
 - Dispatcher ดูว่าทีมหนึ่งๆ รับผิดชอบภารกิจอะไรบ้าง
 - กรอง Active missions (ยังไม่ `RESOLVED`) เพื่อโฟกัสงานที่ต้องทำ
 
----
-
 ## Request
+
+> `team_id` ถูกดึงจาก `X-Rescue-Team-ID` header (ผ่าน Lambda Authorizer context) — **ไม่ใช่ query parameter**
 
 ### Query Parameters
 
 | Parameter | Type   | Required | คำอธิบาย                                                               |
 | :-------- | :----- | :------: | :--------------------------------------------------------------------- |
-| `team_id` | String |    ✅    | รหัสทีมกู้ภัย (เช่น `TEAM-ALPHA`)                                      |
 | `status`  | String |    ❌    | กรองเฉพาะสถานะ (เช่น `ON_SITE`, `NEED_BACKUP`) ถ้าไม่ส่ง = ดึงทุกสถานะ |
 
 ### Headers
@@ -706,13 +710,13 @@ X-Trace-Id: 99887766-5544-3322-1100-aabbccddeeff
 }
 ```
 
-### Error `400 Bad Request` — ไม่ส่ง team_id
+### Error `400 Bad Request` — ไม่ส่ง X-Rescue-Team-ID
 
 ```json
 {
-  "error": "INVALID_REQUEST_BODY",
-  "code": "INVALID_REQUEST_BODY",
-  "message": "team_id query parameter is required",
+  "error": "MISSING_PARAMETER",
+  "code": "MISSING_PARAMETER",
+  "message": "X-Rescue-Team-ID is required",
   "traceId": "44556677-8899-aabb-ccdd-eeff00112233"
 }
 ```
