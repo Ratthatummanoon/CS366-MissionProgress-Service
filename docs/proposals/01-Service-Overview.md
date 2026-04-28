@@ -43,7 +43,7 @@ MissionProgress Service คือบริการสำหรับทีม�
 | **State Transition Management**     | รับผิดชอบการเปลี่ยนสถานะภารกิจตาม Workflow: `DISPATCHED` → `EN_ROUTE` → `ON_SITE` → `NEED_BACKUP` → `RESOLVED` พร้อม Validate ว่าการเปลี่ยนสถานะสมเหตุสมผล             |
 | **Timeline / Action Log Recording** | บันทึก Log การปฏิบัติงานทุกรายการ เช่น เวลาที่ถึงจุดเกิดเหตุ, การกระทำ (Evacuation start, First aid applied), ผู้กระทำ                                                 |
 | **Field Assessment Forwarding**     | รับข้อมูลประเมิน Impact Level / Priority จากทีมกู้ภัยหน้างาน บันทึกเป็น Action Log แล้ว Publish Event ไปยัง IncidentTracking (ผู้เป็นเจ้าของข้อมูล) เพื่ออัปเดตค่าจริง |
-| **Evidence Image Management**       | รับและจัดเก็บหลักฐานภาพถ่ายจากหน้างาน (Evidence Images) ผ่าน S3 Presigned URL พร้อมเชื่อม Image Key กับ Timeline                                                       |
+| **Evidence Image Management**       | รับและจัดเก็บหลักฐานภาพถ่ายจากหน้างาน (Evidence Images) ผ่าน S3 Presigned URL (PUT, 5 นาที) พร้อมเชื่อม Image Key กับ Timeline entry                                   |
 | **Event Publishing**                | Publish Domain Events (`MissionStatusChanged`, `MissionBackupRequested`, `ImpactLevelUpdated`) ไปยัง Amazon EventBridge เพื่อแจ้ง Service อื่นๆ                        |
 
 ### ❌ Out-of-scope / Not Responsible For (ไม่รับผิดชอบ)
@@ -93,10 +93,10 @@ MissionProgress Service คือบริการสำหรับทีม�
 
 > ข้อมูลที่บริการนี้เป็นเจ้าของและดูแลโดยตรง (Source of Truth)
 
-| ข้อมูล                             | รายละเอียด                                                                                        |
-| :--------------------------------- | :------------------------------------------------------------------------------------------------ |
-| **Mission Timeline / Action Logs** | ข้อมูลประวัติการทำงานทั้งหมดที่เป็น Array of objects (เก็บ เวลา, เหตุการณ์, รายละเอียด, ผู้กระทำ) |
-| **Operational Context Updates**    | ข้อมูลบริบทหน้างานล่าสุดที่ทีมกู้ภัยส่งมา เช่น last_update_at, updated_by (Rescue Unit ID)        |
+| ข้อมูล                             | รายละเอียด                                                                                                                                                           |
+| :--------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mission Timeline / Action Logs** | ข้อมูลประวัติการทำงานทั้งหมดที่เป็น Array of objects (เก็บ timestamp, action_type, description, performed_by, old_status, new_status, note, gps_location, image_key) |
+| **Operational Context Updates**    | ข้อมูลบริบทหน้างานล่าสุดที่ทีมกู้ภัยส่งมา เช่น last_updated_at, latest_impact_level, priority_level (Rescue Unit ID)                                                 |
 
 ---
 
