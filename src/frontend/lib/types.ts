@@ -23,10 +23,16 @@ export interface TimelineEntry {
   image_key?: string;
 }
 
+export interface TeamLocation {
+  lat: number;
+  lng: number;
+}
+
 export interface MissionDetailResponse {
   request_id: string;
   incident_id: string;
   mission_id: string;
+  dispatch_id?: string;
   rescue_team_id: string;
   current_status: MissionStatus;
   latest_impact_level: number;
@@ -35,6 +41,15 @@ export interface MissionDetailResponse {
   description?: string;
   location?: string;
   incident_type?: string;
+  // RescueTeam Service enrichment
+  team_name?: string;
+  team_type?: string;
+  capabilities?: string[];
+  equipment?: string[];
+  team_location?: TeamLocation;
+  // ManageDispatch Service enrichment
+  dispatch_status?: string;
+  priority_level?: number;
   timeline: TimelineEntry[];
   data_source: "full" | "partial";
 }
@@ -57,6 +72,13 @@ export interface ProgressResponse {
 
 export interface PresignedURLResponse {
   upload_url: string;
+  image_key: string;
+  expires_in: number;
+  message: string;
+}
+
+export interface ViewURLResponse {
+  view_url: string;
   image_key: string;
   expires_in: number;
   message: string;
