@@ -69,6 +69,39 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		rescueTeamID = request.Headers["x-rescue-team-id"]
 	}
 
+	// Handle GET method — return presigned view URL for an existing image_key
+	if request.HTTPMethod == "GET" {
+		imageKey := request.QueryStringParameters["image_key"]
+		if imageKey == "" {
+			return response.Error(400, "MISSING_PARAMETER", "image_key is required"), nil
+		}
+
+		mission, err := missionRepo.GetMissionByRequestID(ctx, requestID)
+		if err != nil {
+			log.Printf("ERROR: query mission for view URL: %v", err)
+			return response.Error(500, "INTERNAL_ERROR", "Failed to query mission"), nil
+		}
+		if mission == nil {
+			return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request: "+requestID), nil
+		}
+
+		presignResult, err := s3PresignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(evidenceBucket),
+			Key:    aws.String(imageKey),
+		}, s3.WithPresignExpires(300*time.Second))
+		if err != nil {
+			log.Printf("ERROR: generate view URL: %v", err)
+			return response.Error(500, "PRESIGN_FAILED", "Failed to generate view URL"), nil
+		}
+
+		return response.JSON(200, models.ViewURLResponse{
+			ViewURL:   presignResult.URL,
+			ImageKey:  imageKey,
+			ExpiresIn: 300,
+			Message:   "View URL generated successfully.",
+		}), nil
+	}
+
 	// 3. Parse request body
 	var req models.PresignedURLRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
