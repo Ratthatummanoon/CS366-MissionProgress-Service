@@ -56,6 +56,10 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Sensitive variable values (tokens, URLs, keys)
+*.tfvars
+*.tfvars.json
+
 # ==========================================
 # 5. Go (Backend)
 # ==========================================
