@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<MissionStatus | "ALL">("ALL");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (isReady && !config) {
@@ -68,6 +69,16 @@ export default function DashboardPage() {
     {} as Record<string, number>,
   );
 
+  const filteredMissions = missions.filter((m) => {
+    if (search.trim() === "") return true;
+    const q = search.trim().toLowerCase();
+    return (
+      m.request_id.toLowerCase().includes(q) ||
+      m.incident_id.toLowerCase().includes(q) ||
+      m.mission_id.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -78,6 +89,11 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold text-gray-900">ภารกิจทั้งหมด</h1>
             <p className="text-sm text-gray-500 mt-1">
               ทีม {config.teamId} — {missions.length} ภารกิจ
+              {search.trim() !== "" && (
+                <span className="ml-1 text-blue-600">
+                  (แสดง {filteredMissions.length} รายการ)
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -135,6 +151,17 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Search bar */}
+        <div className="mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาด้วย Request ID, Incident ID, Mission ID..."
+            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          />
+        </div>
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4">
             {error}
@@ -155,9 +182,21 @@ export default function DashboardPage() {
                 : "ยังไม่มีภารกิจที่มอบหมายให้ทีมนี้"}
             </p>
           </div>
+        ) : filteredMissions.length === 0 ? (
+          <div className="text-center py-20 text-gray-500">
+            <span className="text-4xl block mb-3">🔍</span>
+            <p className="text-lg font-medium">ไม่พบผลลัพธ์การค้นหา</p>
+            <p className="text-sm mt-1">ไม่มีภารกิจที่ตรงกับ “{search}”</p>
+            <button
+              onClick={() => setSearch("")}
+              className="mt-3 text-blue-600 hover:underline text-sm"
+            >
+              ล้างการค้นหา
+            </button>
+          </div>
         ) : (
           <div className="space-y-3">
-            {missions.map((m) => (
+            {filteredMissions.map((m) => (
               <div
                 key={m.mission_id}
                 onClick={() =>
