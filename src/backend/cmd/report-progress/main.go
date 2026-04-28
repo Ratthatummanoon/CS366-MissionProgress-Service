@@ -116,9 +116,6 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 
 	// 7. Add timeline entry with descriptive message (BUG-11)
 	timelineDesc := fmt.Sprintf("Status changed: %s → %s", oldStatus, req.Status)
-	if req.Note != "" {
-		timelineDesc += ". Note: " + req.Note
-	}
 	entry := &models.TimelineEntry{
 		MissionID:   mission.MissionID,
 		Timestamp:   now,
@@ -126,6 +123,9 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		ActionType:  "STATUS_CHANGE",
 		Description: timelineDesc,
 		PerformedBy: rescueTeamID,
+		OldStatus:   oldStatus,
+		NewStatus:   req.Status,
+		Note:        req.Note,
 		GPSLocation: req.CurrentLocation,
 		ImageKey:    req.ImageKey,
 	}
