@@ -14,6 +14,22 @@ import StatusBadge from "@/components/StatusBadge";
 import ImpactBadge from "@/components/ImpactBadge";
 import StateMachineDiagram from "@/components/StateMachineDiagram";
 
+const ACTION_ICONS: Record<string, string> = {
+  STATUS_CHANGE: "🔄",
+  COMMENT: "💬",
+  UPLOAD: "📎",
+};
+const ACTION_LABELS: Record<string, string> = {
+  STATUS_CHANGE: "เปลี่ยนสถานะ",
+  COMMENT: "บันทึกหมายเหตุ",
+  UPLOAD: "อัปโหลดหลักฐาน",
+};
+const ACTION_DOT_CLASS: Record<string, string> = {
+  STATUS_CHANGE: "border-blue-500 bg-blue-100",
+  COMMENT: "border-gray-400 bg-white",
+  UPLOAD: "border-purple-500 bg-purple-100",
+};
+
 function MissionDetailContent() {
   const searchParams = useSearchParams();
   const requestId = searchParams.get("id") || "";
@@ -27,11 +43,14 @@ function MissionDetailContent() {
   const [newStatus, setNewStatus] = useState<MissionStatus | "">("");
   const [note, setNote] = useState("");
   const [location, setLocation] = useState("");
+  const [geoLocating, setGeoLocating] = useState(false);
+  const [geoError, setGeoError] = useState("");
   const [impactLevel, setImpactLevel] = useState<number | undefined>();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const geoDetected = useRef(false);
 
   useEffect(() => {
     if (isReady && !config) router.push("/");
@@ -40,6 +59,14 @@ function MissionDetailContent() {
   useEffect(() => {
     if (config && requestId) loadMission();
   }, [config, requestId]);
+
+  useEffect(() => {
+    if (mission && !geoDetected.current) {
+      geoDetected.current = true;
+      detectLocation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mission]);
 
   async function loadMission() {
     const client = getClient();
@@ -53,6 +80,68 @@ function MissionDetailContent() {
       setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function detectLocation() {
+    if (!navigator.geolocation || !window.isSecureContext) {
+      // HTTP context — fallback to IP geolocation (city-level accuracy)
+      setGeoLocating(true);
+      setGeoError("");
+      fetch("http://ip-api.com/json")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.status === "success") {
+            setLocation(`${data.lat},${data.lon}`);
+            setGeoError(
+              "⚠️ ใช้ตำแหน่งจาก IP (ความแม่นยำระดับเมือง: " + data.city + ")",
+            );
+          } else {
+            setGeoError("ไม่สามารถระบุตำแหน่งได้ กรุณากรอกเอง");
+          }
+        })
+        .catch(() => setGeoError("ไม่สามารถระบุตำแหน่งได้ กรุณากรอกเอง"))
+        .finally(() => setGeoLocating(false));
+      return;
+    }
+    setGeoLocating(true);
+    setGeoError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        setLocation(`${lat},${lng}`);
+        setGeoLocating(false);
+      },
+      () => {
+        // GPS denied/failed — fallback to IP geolocation
+        fetch("http://ip-api.com/json")
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.status === "success") {
+              setLocation(`${data.lat},${data.lon}`);
+              setGeoError(
+                "⚠️ ใช้ตำแหน่งจาก IP (ความแม่นยำระดับเมือง: " + data.city + ")",
+              );
+            } else {
+              setGeoError("ไม่สามารถระบุตำแหน่งได้ กรุณากรอกเอง");
+            }
+          })
+          .catch(() => setGeoError("ไม่สามารถระบุตำแหน่งได้ กรุณากรอกเอง"))
+          .finally(() => setGeoLocating(false));
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  }
+
+  async function handleViewImage(imageKey: string) {
+    const client = getClient();
+    if (!client) return;
+    try {
+      const data = await client.getViewUrl(requestId, imageKey);
+      window.open(data.view_url, "_blank", "noopener,noreferrer");
+    } catch {
+      // presigned URL fetch failed — silent; image_key is still shown as text
     }
   }
 
@@ -157,6 +246,36 @@ function MissionDetailContent() {
           ← กลับหน้ารวม
         </button>
 
+        {/* Service Status Bar */}
+        {mission && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(
+              [
+                { label: "RescueTeam", ok: !!mission.team_name },
+                {
+                  label: "RescueRequest",
+                  ok: !!(mission.description || mission.incident_type),
+                },
+                { label: "ManageDispatch", ok: !!mission.dispatch_status },
+              ] as { label: string; ok: boolean }[]
+            ).map(({ label, ok }) => (
+              <span
+                key={label}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${
+                  ok
+                    ? "bg-green-50 border-green-200 text-green-700"
+                    : "bg-yellow-50 border-yellow-200 text-yellow-700"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-green-500" : "bg-yellow-500"}`}
+                />
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4">
             {error}
@@ -211,10 +330,59 @@ function MissionDetailContent() {
                 </div>
               )}
 
+              {/* Dispatch info from ManageDispatch */}
+              {(mission.dispatch_status || mission.priority_level) && (
+                <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
+                  {mission.dispatch_status && (
+                    <div>
+                      <span className="text-xs text-gray-500">
+                        สถานะ Dispatch
+                      </span>
+                      <p className="font-medium text-sm">
+                        {mission.dispatch_status}
+                      </p>
+                    </div>
+                  )}
+                  {!!mission.priority_level && (
+                    <div>
+                      <span className="text-xs text-gray-500">
+                        ระดับความสำคัญ
+                      </span>
+                      <p className="font-medium text-sm">
+                        {mission.priority_level === 4
+                          ? "🔴"
+                          : mission.priority_level === 3
+                            ? "🟠"
+                            : mission.priority_level === 2
+                              ? "🟡"
+                              : "🟢"}{" "}
+                        {mission.priority_level} —{" "}
+                        {mission.priority_level === 4
+                          ? "วิกฤต"
+                          : mission.priority_level === 3
+                            ? "สูง"
+                            : mission.priority_level === 2
+                              ? "ปานกลาง"
+                              : "ต่ำ"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {mission.data_source === "partial" && (
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 inline-block">
-                    ⚠️ แสดงข้อมูลบางส่วน — RescueRequest Service ไม่พร้อมใช้งาน
+                    ⚠️ แสดงข้อมูลบางส่วน —{" "}
+                    {[
+                      !(mission.description || mission.incident_type) &&
+                        "RescueRequest",
+                      !mission.team_name && "RescueTeam",
+                      !mission.dispatch_status && "ManageDispatch",
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}{" "}
+                    Service ไม่พร้อมใช้งาน
                   </p>
                 </div>
               )}
@@ -229,6 +397,59 @@ function MissionDetailContent() {
                   {new Date(mission.last_updated_at).toLocaleString("th-TH")}
                 </div>
               </div>
+            </div>
+
+            {/* Team Info Card (RescueTeam Service) */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">🚒 ข้อมูลทีม</h2>
+                {mission.team_name ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    เชื่อมต่อแล้ว
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-yellow-50 border border-yellow-200 text-yellow-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                    ไม่มีข้อมูลทีม
+                  </span>
+                )}
+              </div>
+              {mission.team_name ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-xs text-gray-500">ชื่อทีม</span>
+                    <p className="font-medium">{mission.team_name}</p>
+                  </div>
+                  {mission.team_type && (
+                    <div>
+                      <span className="text-xs text-gray-500">ประเภท</span>
+                      <p className="font-medium">{mission.team_type}</p>
+                    </div>
+                  )}
+                  {mission.capabilities && mission.capabilities.length > 0 && (
+                    <div>
+                      <span className="text-xs text-gray-500">ความสามารถ</span>
+                      <p className="font-medium">
+                        {mission.capabilities.join(", ")}
+                      </p>
+                    </div>
+                  )}
+                  {mission.equipment && mission.equipment.length > 0 && (
+                    <div>
+                      <span className="text-xs text-gray-500">อุปกรณ์</span>
+                      <p className="font-medium">
+                        {mission.equipment.join(", ")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  RescueTeam Service ไม่พร้อมใช้งาน — แสดงเฉพาะ Team ID:{" "}
+                  {mission.rescue_team_id}
+                </p>
+              )}
             </div>
 
             {/* State Machine Diagram */}
@@ -283,13 +504,47 @@ function MissionDetailContent() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         ตำแหน่งปัจจุบัน
                       </label>
-                      <input
-                        type="text"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="เช่น 13.7563,100.5018"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                          placeholder="กด 📍 เพื่อตรวจจับอัตโนมัติ"
+                          readOnly={geoLocating}
+                          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={detectLocation}
+                          disabled={geoLocating}
+                          title="ตรวจจับตำแหน่งปัจจุบัน"
+                          className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-base transition disabled:opacity-50"
+                        >
+                          {geoLocating ? (
+                            <span className="inline-block animate-spin">
+                              ⏳
+                            </span>
+                          ) : (
+                            "📍"
+                          )}
+                        </button>
+                      </div>
+                      {geoError && (
+                        <p
+                          className={`mt-1 text-xs ${
+                            geoError.startsWith("⚠️")
+                              ? "text-amber-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {geoError}
+                        </p>
+                      )}
+                      {location && !geoError && (
+                        <p className="mt-1 text-xs text-green-600">
+                          ✓ {location}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -367,24 +622,36 @@ function MissionDetailContent() {
                   <div className="space-y-6">
                     {mission.timeline.map((entry, i) => (
                       <div key={entry.log_id || i} className="relative pl-10">
-                        <div className="absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2 border-blue-400 bg-white" />
+                        <div
+                          className={`absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2 ${
+                            ACTION_DOT_CLASS[entry.action_type] ||
+                            "border-blue-400 bg-white"
+                          }`}
+                        />
                         <div className="bg-gray-50 rounded-lg p-4">
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <span className="text-sm font-semibold text-gray-900">
-                              {entry.action_type}
+                            <span className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                              <span>
+                                {ACTION_ICONS[entry.action_type] || "📋"}
+                              </span>
+                              <span>
+                                {ACTION_LABELS[entry.action_type] ||
+                                  entry.action_type}
+                              </span>
                             </span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-gray-400">
                               {new Date(entry.timestamp).toLocaleString(
                                 "th-TH",
                               )}
                             </span>
                           </div>
+
                           <p className="text-sm text-gray-700 mt-1">
                             {entry.description}
                           </p>
 
                           {(entry.old_status || entry.new_status) && (
-                            <div className="flex items-center gap-2 mt-2 text-xs">
+                            <div className="flex items-center gap-2 mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 w-fit">
                               {entry.old_status && (
                                 <StatusBadge
                                   status={entry.old_status as MissionStatus}
@@ -392,7 +659,9 @@ function MissionDetailContent() {
                                 />
                               )}
                               {entry.old_status && entry.new_status && (
-                                <span className="text-gray-400">→</span>
+                                <span className="text-blue-400 font-bold text-sm">
+                                  →
+                                </span>
                               )}
                               {entry.new_status && (
                                 <StatusBadge
@@ -403,20 +672,32 @@ function MissionDetailContent() {
                             </div>
                           )}
 
-                          <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 text-xs text-gray-500">
                             {entry.performed_by && (
-                              <span>โดย: {entry.performed_by}</span>
+                              <span className="flex items-center gap-1">
+                                👤 <span>{entry.performed_by}</span>
+                              </span>
                             )}
-                            {entry.location && <span>📍 {entry.location}</span>}
+                            {entry.location && (
+                              <span className="flex items-center gap-1">
+                                📍 <span>{entry.location}</span>
+                              </span>
+                            )}
                             {entry.note && (
-                              <span className="text-gray-600">
-                                💬 {entry.note}
+                              <span className="flex items-center gap-1 text-gray-700">
+                                💬 <span>{entry.note}</span>
                               </span>
                             )}
                             {entry.image_key && (
-                              <span className="text-blue-600">
-                                📷 มีรูปภาพแนบ
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleViewImage(entry.image_key!)
+                                }
+                                className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                📷 ดูรูปภาพหลักฐาน
+                              </button>
                             )}
                           </div>
                         </div>
