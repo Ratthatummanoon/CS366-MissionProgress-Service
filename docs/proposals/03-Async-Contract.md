@@ -35,7 +35,7 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 ```json
 {
-  "source": "mission-progress-service",
+  "source": "MissionProgressService",
   "detail-type": "MissionStatusChanged",
   "detail": {
     "schema_version": "1.0",
@@ -45,9 +45,8 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
     "rescue_team_id": "TEAM-ALPHA",
     "old_status": "EN_ROUTE",
     "new_status": "ON_SITE",
-    "note": "ถึงจุดเกิดเหตุแล้ว น้ำสูง 1.2m",
-    "updated_at": "2025-06-14T09:32:15Z",
-    "performed_by": "TEAM-ALPHA"
+    "changed_at": "2025-06-14T09:32:15Z",
+    "changed_by": "TEAM-ALPHA"
   }
 }
 ```
@@ -58,7 +57,7 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 | Field                 | Type            | Required | Description                     |
 | --------------------- | --------------- | -------- | ------------------------------- |
-| source                | String          | ✅       | mission-progress-service        |
+| source                | String          | ✅       | MissionProgressService          |
 | detail-type           | String          | ✅       | MissionStatusChanged            |
 | detail.schema_version | String          | ✅       | Schema version (current: "1.0") |
 | detail.mission_id     | String          | ✅       | รหัสภารกิจ                      |
@@ -67,16 +66,15 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 | detail.rescue_team_id | String          | ✅       | ทีมกู้ภัย                       |
 | detail.old_status     | String          | ✅       | สถานะเดิม                       |
 | detail.new_status     | String          | ✅       | สถานะใหม่                       |
-| detail.note           | String          | ❌       | หมายเหตุ                        |
-| detail.updated_at     | ISO 8601 String | ✅       | เวลา                            |
-| detail.performed_by   | String          | ✅       | ผู้กระทำ                        |
+| detail.changed_at     | ISO 8601 String | ✅       | เวลาที่เปลี่ยนสถานะ             |
+| detail.changed_by     | String          | ✅       | ผู้กระทำ (Rescue Team ID)       |
 
 ---
 
 ### Validation Rules
 
 - `new_status` ต้องถูกต้องตาม State Machine
-- `updated_at` ต้องเป็น ISO 8601
+- `changed_at` ต้องเป็น ISO 8601
 - `rescue_team_id` ห้ามว่าง
 
 ---
@@ -125,18 +123,16 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
 
 ```json
 {
-  "source": "mission-progress-service",
+  "source": "MissionProgressService",
   "detail-type": "MissionBackupRequested",
   "detail": {
     "schema_version": "1.0",
     "mission_id": "MSN-001",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
-    "old_status": "ON_SITE",
-    "new_status": "NEED_BACKUP",
-    "note": "ต้องการเรือเพิ่ม",
-    "updated_at": "2025-06-14T10:15:00Z",
-    "performed_by": "TEAM-ALPHA"
+    "requested_at": "2025-06-14T10:15:00Z",
+    "requested_by": "TEAM-ALPHA",
+    "location": "13.7563,100.5018"
   }
 }
 ```
@@ -148,8 +144,12 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
 | Field                 | Required | Description                     |
 | --------------------- | -------- | ------------------------------- |
 | detail.schema_version | ✅       | Schema version (current: "1.0") |
-| detail.new_status     | ✅       | ต้องเป็น NEED_BACKUP            |
-| detail.old_status     | ✅       | ต้องเป็น ON_SITE                |
+| detail.mission_id     | ✅       | รหัสภารกิจ                      |
+| detail.incident_id    | ✅       | รหัสเหตุการณ์                   |
+| detail.rescue_team_id | ✅       | ทีมกู้ภัย                       |
+| detail.requested_at   | ✅       | ISO 8601 เวลาที่ขอ backup       |
+| detail.requested_by   | ✅       | ผู้ขอ backup (Rescue Team ID)   |
+| detail.location       | ❌       | GPS string หน้างาน (optional)   |
 
 ---
 
@@ -189,17 +189,17 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ```json
 {
-  "source": "mission-progress-service",
+  "source": "MissionProgressService",
   "detail-type": "ImpactLevelUpdated",
   "detail": {
     "schema_version": "1.0",
     "mission_id": "MSN-001",
     "incident_id": "INC-001",
     "rescue_team_id": "TEAM-ALPHA",
-    "new_impact_level": "HIGH",
-    "note": "สถานการณ์รุนแรงขึ้น",
+    "old_level": 2,
+    "new_level": 4,
     "updated_at": "2025-06-14T09:35:00Z",
-    "performed_by": "TEAM-ALPHA"
+    "updated_by": "TEAM-ALPHA"
   }
 }
 ```
@@ -208,10 +208,14 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ### Field Definition
 
-| Field            | Required | Description     |
-| ---------------- | -------- | --------------- |
-| new_impact_level | ✅       | ระดับความรุนแรง |
-| updated_at       | ✅       | ISO 8601        |
+| Field             | Type     | Required | Description                               |
+| ----------------- | -------- | -------- | ----------------------------------------- |
+| detail.old_level  | Integer  | ✅       | ระดับความรุนแรงเดิม (capture ก่อน update) |
+| detail.new_level  | Integer  | ✅       | ระดับความรุนแรงใหม่จากหน้างาน             |
+| detail.updated_at | ISO 8601 | ✅       | เวลา                                      |
+| detail.updated_by | String   | ✅       | ผู้ปรับ (Rescue Team ID)                  |
+
+> ⚠️ **หมายเหตุ:** Event นี้จะถูก publish **เฉพาะเมื่อ `new_level != old_level`** — ใส่ค่าเดิมซ้ำจะไม่ถูกส่ง
 
 ---
 
@@ -229,3 +233,69 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 - Outbox Pattern
 - EventBridge retry
 - Non-blocking - ทีมกู้ภัยยังทำงานได้แม้ Event ส่งไม่ถึง
+
+---
+
+## **Message Contract #4: DispatchOrderCreated (Inbound)**
+
+### ข้อมูลทั่วไป
+
+| Field             | Value                                                          |
+| ----------------- | -------------------------------------------------------------- |
+| Message Name      | DispatchOrderCreated                                           |
+| Interaction Style | Asynchronous (Subscribe)                                       |
+| Producer          | Manage Dispatch Service                                        |
+| Consumer          | MissionProgress Service (mission-assigned-handler Lambda — Go) |
+| Channel           | EventBridge                                                    |
+| Demo 2            | ✅ Implemented — `mission-assigned-handler` Lambda             |
+
+---
+
+### คำอธิบาย
+
+MissionProgress ฟัง Event นี้จาก Manage Dispatch Service เมื่อ Dispatcher มอบหมายงานให้ทีมกู้ภัย Lambda `mission-assigned-handler` จะสร้าง MissionAssignment record และ Timeline entry แรกอัตโนมัติ
+
+**ผลลัพธ์:**
+
+1. สร้าง MissionAssignment (`status = DISPATCHED`)
+2. สร้าง MissionTimeline entry แรก (`action_type = MISSION_ASSIGNED`)
+3. ดึง `incident_id` จาก RescueRequest Service (degraded: empty string ถ้าล้มเหลว)
+4. Idempotency check ด้วย `dispatch_id` — ถ้า mission มีอยู่แล้ว → skip
+
+---
+
+### Expected Payload (จาก Manage Dispatch Service)
+
+```json
+{
+  "source": "dispatch-management-service",
+  "detail-type": "DispatchOrderCreated",
+  "detail": {
+    "dispatchId": "DSP-001",
+    "requestId": "REQ-001",
+    "teamId": "TEAM-ALPHA",
+    "priorityLevel": 2,
+    "status": "ACTIVE",
+    "dispatchedAt": "2025-06-14T08:45:00Z"
+  }
+}
+```
+
+### Field Definition
+
+| Field                | Type    | Required | Description                           |
+| -------------------- | ------- | -------- | ------------------------------------- |
+| detail.dispatchId    | String  | ✅       | รหัส Dispatch Order (idempotency key) |
+| detail.requestId     | String  | ✅       | รหัส request จาก RescueRequest        |
+| detail.teamId        | String  | ✅       | รหัสทีมกู้ภัย                         |
+| detail.priorityLevel | Integer | ❌       | ลำดับความสำคัญ                        |
+| detail.status        | String  | ❌       | สถานะ Dispatch Order                  |
+| detail.dispatchedAt  | String  | ❌       | เวลาที่มอบหมาย (ISO 8601)             |
+
+### Failure Handling
+
+| กรณี                    | การจัดการ                                             |
+| ----------------------- | ----------------------------------------------------- |
+| Duplicate event         | Idempotency check → skip (ไม่ error)                  |
+| RescueRequest ล่ม       | Degraded Mode → `incident_id = ""` (ยังสร้าง mission) |
+| Missing required fields | Return error → EventBridge retry                      |
