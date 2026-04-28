@@ -73,6 +73,14 @@ type PresignedURLResponse struct {
 	Message   string `json:"message"`
 }
 
+// ViewURLResponse is the response for GET /missions/{request_id}/presigned-url?image_key=...
+type ViewURLResponse struct {
+	ViewURL   string `json:"view_url"`
+	ImageKey  string `json:"image_key"`
+	ExpiresIn int    `json:"expires_in"`
+	Message   string `json:"message"`
+}
+
 // ListMissionsResponse is the response for GET /incidents (list missions by team).
 type ListMissionsResponse struct {
 	TeamID        string              `json:"team_id"`
