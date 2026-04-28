@@ -237,6 +237,32 @@ resource "aws_api_gateway_integration" "presigned_url" {
 }
 
 # ---------------------------------------------------
+# GET /missions/{request_id}/presigned-url (view evidence)
+# ---------------------------------------------------
+resource "aws_api_gateway_method" "get_presigned_url" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.mission_presigned_url.id
+  http_method   = "GET"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.lambda_auth.id
+
+  request_parameters = {
+    "method.request.header.x-api-key"         = true
+    "method.request.header.X-Rescue-Team-ID"  = true
+    "method.request.querystring.image_key"    = true
+  }
+}
+
+resource "aws_api_gateway_integration" "get_presigned_url" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.mission_presigned_url.id
+  http_method             = aws_api_gateway_method.get_presigned_url.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.presigned_url.invoke_arn
+}
+
+# ---------------------------------------------------
 # OPTIONS /missions/{request_id}/presigned-url (CORS)
 # ---------------------------------------------------
 resource "aws_api_gateway_method" "options_presigned_url" {
@@ -282,7 +308,7 @@ resource "aws_api_gateway_integration_response" "options_presigned_url" {
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,x-api-key,X-Rescue-Team-ID'"
-    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
 }
@@ -364,6 +390,61 @@ resource "aws_api_gateway_integration_response" "options_incidents" {
 }
 
 # ---------------------------------------------------
+# Gateway Responses — add CORS headers to all error responses
+# Without this, authorizer 403/401 errors arrive without CORS headers
+# and browsers report them as CORS errors instead of auth errors.
+# ---------------------------------------------------
+locals {
+  cors_origin = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
+}
+
+resource "aws_api_gateway_gateway_response" "access_denied" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "ACCESS_DENIED"
+  status_code   = "403"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${local.cors_origin}'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Api-Key,X-Rescue-Team-ID,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "unauthorized" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "UNAUTHORIZED"
+  status_code   = "401"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${local.cors_origin}'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Api-Key,X-Rescue-Team-ID,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "default_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "DEFAULT_4XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${local.cors_origin}'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Api-Key,X-Rescue-Team-ID,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "default_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  response_type = "DEFAULT_5XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'${local.cors_origin}'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,X-Api-Key,X-Rescue-Team-ID,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,OPTIONS'"
+  }
+}
+
+# ---------------------------------------------------
 # Deployment & Stage
 # ---------------------------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
@@ -381,6 +462,8 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_integration.report_progress.id,
       aws_api_gateway_method.presigned_url.id,
       aws_api_gateway_integration.presigned_url.id,
+      aws_api_gateway_method.get_presigned_url.id,
+      aws_api_gateway_integration.get_presigned_url.id,
       aws_api_gateway_method.list_missions.id,
       aws_api_gateway_integration.list_missions.id,
       aws_api_gateway_method.options_incident.id,
@@ -388,6 +471,10 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_method.options_presigned_url.id,
       aws_api_gateway_method.options_incidents.id,
       aws_api_gateway_authorizer.lambda_auth.id,
+      aws_api_gateway_gateway_response.access_denied.id,
+      aws_api_gateway_gateway_response.unauthorized.id,
+      aws_api_gateway_gateway_response.default_4xx.id,
+      aws_api_gateway_gateway_response.default_5xx.id,
     ]))
   }
 
