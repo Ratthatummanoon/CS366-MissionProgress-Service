@@ -66,12 +66,12 @@
 
 ### Interaction
 
-| ทิศทาง       | ช่องทาง                          | รายละเอียด                                            | Demo 1             | Demo 2+ |
-| ------------ | -------------------------------- | ----------------------------------------------------- | ------------------ | ------- |
-| ขาเข้า Async | EventBridge MissionAssignedEvent | สร้าง Mission Record                                  | ❌ Seed Data       | 🔜      |
-| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อกทีม (BUSY → AVAILABLE)                         | ✅ CloudWatch Logs | 🔜      |
-| ขาออก Sync   | HTTP GET /v1/dispatch/{id}       | ดึงข้อมูล Dispatch Order (เสริม get-mission response) | Degraded Mode      | [TBD]   |
-| ขาเข้า Sync  | GET /missions/{request_id}       | ดู Timeline + รูปภาพ                                  | [TBD]              | [TBD]   |
+| ทิศทาง       | ช่องทาง                          | รายละเอียด                                              | สถานะ                |
+| ------------ | -------------------------------- | ------------------------------------------------------- | -------------------- |
+| ขาเข้า Async | EventBridge DispatchOrderCreated | สร้าง Mission Record (ผ่าน mission-assigned-handler)    | ✅ Implemented       |
+| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อคทีม (BUSY → AVAILABLE)                           | ✅ → CloudWatch Logs |
+| ขาออก Sync   | GET /v1/dispatches?teamId=       | ดึง dispatch status, priority_level (เสริม get-mission) | ✅ Active (parallel) |
+| ขาเข้า Sync  | GET /missions/{request_id}       | Dispatcher ดู Timeline + รูปภาพ                         | [TBD]                |
 
 ---
 
@@ -84,7 +84,45 @@
 
 ---
 
-## **Dependency 3: Rescue Prioritization**
+## **Dependency 3: RescueTeam Service**
+
+### Overview
+
+| Field             | Value                       |
+| ----------------- | --------------------------- |
+| Service Owner     | กมลพันธ์ กันธายอด           |
+| Type              | Service                     |
+| Interaction Style | Synchronous (REST)          |
+| Criticality       | High (รองรับ Degraded Mode) |
+
+### Purpose
+
+- ดึงข้อมูลทีม (team_name, team_type, capabilities, equipment, location)
+- เป็น **Source of Truth** ของทีมกู้ภัย
+- อัปเดตสถานะทีม เมื่อภารกิจ RESOLVED
+
+### Endpoints ที่เรียก
+
+- `GET /v1/teams/{teamId}` — ดึงเอกสารทีม (Bearer auth)
+- `PATCH /v1/teams/{teamId}/status` — อัปเดตสถานะทีม เป็น `AVAILABLE` (Bearer auth)
+
+### Interaction
+
+| ทิศทาง     | ช่องทาง                         | Lambda          | รายละเอียด                                  | สถานะ                |
+| ---------- | ------------------------------- | --------------- | ------------------------------------------- | -------------------- |
+| ขาออก Sync | GET /v1/teams/{teamId}          | get-mission     | ดึงเอกสารทีม (ล้มเหลว → Degraded Mode)      | ✅ Active (parallel) |
+| ขาออก Sync | PATCH /v1/teams/{teamId}/status | report-progress | เมื่อ RESOLVED → ปล่อยทีม (fire-and-forget) | ✅ Implemented       |
+
+### Failure Handling
+
+| กรณี                                   | การจัดการ                                                       |
+| -------------------------------------- | --------------------------------------------------------------- |
+| GET ล้มเหลว (timeout 800ms + retry 2x) | **Degraded Mode** → omit team fields จาก response               |
+| PATCH ล้มเหลว                          | **Non-blocking** — fire-and-forget goroutine, ไม่ fail response |
+
+---
+
+## **Dependency 4 (previously 3): Rescue Prioritization**
 
 ### Overview
 
@@ -114,7 +152,7 @@
 
 ---
 
-## **Dependency 4: Amazon S3 (Evidence Storage)**
+## **Dependency 5 (previously 4): Amazon S3 (Evidence Storage)**
 
 ### Overview
 
@@ -144,7 +182,7 @@
 
 ---
 
-## **Dependency 5: RescueRequest Service**
+## **Dependency 6 (previously 5): RescueRequest Service**
 
 ### Overview
 
@@ -169,9 +207,11 @@
 
 ### Interaction
 
-| ทิศทาง     | ช่องทาง                        | รายละเอียด                                  | Demo 2            |
-| ---------- | ------------------------------ | ------------------------------------------- | ----------------- |
-| ขาออก Sync | HTTP GET /v1/rescue-requests/… | ดึงข้อมูล Request (ล้มเหลว → Degraded Mode) | ✅ URL จริง [TBD] |
+| ทิศทาง     | ช่องทาง                        | รายละเอียด                                  | สถานะ                |
+| ---------- | ------------------------------ | ------------------------------------------- | -------------------- |
+| ขาออก Sync | HTTP GET /v1/rescue-requests/… | ดึงข้อมูล Request (ล้มเหลว → Degraded Mode) | ✅ Active (parallel) |
+
+> เรียกในทั้ง `get-mission` Lambda (parallel) และ `mission-assigned-handler` Lambda
 
 ### Failure Handling
 
@@ -186,7 +226,7 @@
 
 ---
 
-## **Dependency 6: API Gateway + Authorizer**
+## **Dependency 7 (previously 6): API Gateway + Authorizer**
 
 ### Overview
 
