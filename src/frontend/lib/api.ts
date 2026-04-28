@@ -3,6 +3,7 @@ import {
   ListMissionsResponse,
   ProgressResponse,
   PresignedURLResponse,
+  ViewURLResponse,
   APIError,
 } from "./types";
 
@@ -85,6 +86,16 @@ class ApiClient {
           content_type: contentType,
         }),
       },
+    );
+  }
+
+  async getViewUrl(
+    requestId: string,
+    imageKey: string,
+  ): Promise<ViewURLResponse> {
+    return this.request<ViewURLResponse>(
+      `/missions/${encodeURIComponent(requestId)}/presigned-url?image_key=${encodeURIComponent(imageKey)}`,
+      { headers: this.headers() },
     );
   }
 
