@@ -248,3 +248,38 @@ resource "aws_lambda_permission" "eventbridge_mission_assigned_handler" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.mission_assigned.arn
 }
+
+# ---------------------------------------------------
+# Lambda: health-check (no auth — public)
+# ---------------------------------------------------
+resource "aws_lambda_function" "health_check" {
+  function_name = "${var.project_name}-health-check"
+  role          = local.lab_role_arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  memory_size   = 128
+  timeout       = 10
+  filename      = "${path.module}/build/health-check.zip"
+
+  source_code_hash = fileexists("${path.module}/build/health-check.zip") ? filebase64sha256("${path.module}/build/health-check.zip") : null
+
+  environment {
+    variables = {
+      RESCUE_REQUEST_SERVICE_URL  = var.rescue_request_service_url
+      MANAGE_DISPATCH_SERVICE_URL = var.manage_dispatch_service_url
+      RESCUE_TEAM_SERVICE_URL     = var.rescue_team_service_url
+    }
+  }
+
+  tags = {
+    Project = var.project_name
+  }
+}
+
+resource "aws_lambda_permission" "apigw_health_check" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.health_check.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+}
