@@ -12,7 +12,11 @@ import { initClient, getClient, clearClient } from "@/lib/api";
 interface Config {
   apiUrl: string;
   apiKey: string;
-  teamId: string;
+  teamId?: string;
+  teamName?: string;
+  rescueTeamUrl?: string;
+  manageDispatchUrl?: string;
+  rescueRequestUrl?: string;
 }
 
 interface ConfigContextType {
@@ -40,9 +44,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Config;
-        if (parsed.apiUrl && parsed.apiKey && parsed.teamId) {
+        if (parsed.apiUrl && parsed.apiKey) {
           setConfigState(parsed);
-          initClient(parsed.apiUrl, parsed.apiKey, parsed.teamId);
+          if (parsed.teamId) {
+            initClient(parsed.apiUrl, parsed.apiKey, parsed.teamId);
+          }
         }
       } catch {
         localStorage.removeItem(STORAGE_KEY);
@@ -54,7 +60,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   const setConfig = (c: Config) => {
     setConfigState(c);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(c));
-    initClient(c.apiUrl, c.apiKey, c.teamId);
+    if (c.teamId) {
+      initClient(c.apiUrl, c.apiKey, c.teamId);
+    } else {
+      clearClient();
+    }
   };
 
   const logout = () => {
