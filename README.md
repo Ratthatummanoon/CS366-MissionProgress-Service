@@ -456,7 +456,7 @@ Script จะ cross-compile Go → `linux/arm64` และบรรจุเป�
 ```hcl
 aws_region                    = "us-east-1"
 lab_role_arn                  = "arn:aws:iam::<account-id>:role/LabRole"
-api_key_value                 = "<your-api-key>"
+api_key_value                 = "mission-progress-token-default"
 rescue_request_service_url    = "<url>"
 rescue_request_service_token  = "<token>"
 manage_dispatch_service_url   = "<url>"
