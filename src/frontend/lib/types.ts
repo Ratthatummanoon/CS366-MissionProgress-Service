@@ -90,6 +90,74 @@ export interface APIError {
   message: string;
 }
 
+// RescueTeam Service types
+export interface RescueTeamLocation {
+  lat: number;
+  lng: number;
+  source?: string;
+  updated_at?: string;
+}
+
+export interface RescueTeam {
+  team_id: string;
+  team_name?: string;
+  team_type?: string;
+  status: "AVAILABLE" | "BUSY" | "OFFLINE";
+  location?: RescueTeamLocation;
+  capabilities?: string[];
+  equipment?: string[];
+  updated_at?: string;
+}
+
+export interface RescueTeamListResponse {
+  teams: RescueTeam[];
+  trace_id?: string;
+}
+
+// ManageDispatch Service types
+export interface DispatchItem {
+  dispatchId: string;
+  requestId: string;
+  status: "PENDING" | "ACCEPT" | "DECLINE";
+  priorityLevel?: number;
+  dispatchedAt: string;
+  note?: string;
+}
+
+export interface DispatchListResponse {
+  teamId: string;
+  items: DispatchItem[];
+}
+
+// RescueRequest Service types (citizen status endpoint)
+export interface RescueRequestLocation {
+  latitude?: number;
+  longitude?: number;
+  locationDetails?: string;
+  addressLine?: string;
+  province?: string;
+  district?: string;
+  subdistrict?: string;
+}
+
+export interface RescueRequestCitizenStatus {
+  requestId: string;
+  incidentId?: string;
+  requestType?: string;
+  status?: string;
+  statusMessage?: string;
+  description?: string;
+  peopleCount?: number;
+  specialNeeds?: string | string[] | null;
+  contactName?: string;
+  contactPhoneMasked?: string;
+  location?: RescueRequestLocation;
+  priorityLevel?: string;
+  submittedAt?: string;
+  lastUpdatedAt?: string;
+  stateVersion?: number;
+}
+
 export type MissionStatus =
   | "DISPATCHED"
   | "EN_ROUTE"
