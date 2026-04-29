@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConfig, getClient } from "@/lib/config-context";
-import { MissionAssignment, MissionStatus } from "@/lib/types";
+import { MissionAssignment, MissionStatus, DispatchItem } from "@/lib/types";
 import Navbar from "@/components/Navbar";
 import StatusBadge from "@/components/StatusBadge";
 import ImpactBadge from "@/components/ImpactBadge";
@@ -25,10 +25,18 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<MissionStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
+  const [pendingDispatches, setPendingDispatches] = useState<DispatchItem[]>(
+    [],
+  );
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+  const [dispatchDismissed, setDispatchDismissed] = useState(false);
 
   useEffect(() => {
-    if (isReady && !config) {
+    if (!isReady) return;
+    if (!config?.apiUrl || !config?.apiKey) {
       router.push("/");
+    } else if (!config.teamId) {
+      router.push("/teams");
     }
   }, [isReady, config, router]);
 
@@ -36,6 +44,35 @@ export default function DashboardPage() {
     if (!config) return;
     loadMissions();
   }, [config, filter]);
+
+  useEffect(() => {
+    if (!config?.manageDispatchUrl) return;
+    setDispatchDismissed(false);
+    loadPendingDispatches();
+  }, [config?.manageDispatchUrl, config?.teamId]);
+
+  async function loadPendingDispatches() {
+    if (!config?.manageDispatchUrl) return;
+    setDispatchLoading(true);
+    try {
+      const base = config.manageDispatchUrl.replace(/\/+$/, "");
+      const res = await fetch(
+        `${base}/v1/dispatches?teamId=${encodeURIComponent(config.teamId ?? "")}&status=PENDING`,
+        {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(6000),
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPendingDispatches(data.items ?? []);
+      }
+    } catch {
+      // silently ignore — not critical
+    } finally {
+      setDispatchLoading(false);
+    }
+  }
 
   async function loadMissions() {
     const client = getClient();
@@ -105,6 +142,92 @@ export default function DashboardPage() {
             รีเฟรช
           </button>
         </div>
+
+        {/* Pending Dispatches Alert */}
+        {config.manageDispatchUrl &&
+          !dispatchDismissed &&
+          (dispatchLoading || pendingDispatches.length > 0) && (
+            <div className="mb-6 bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📨</span>
+                  <h2 className="font-semibold text-orange-900">
+                    Dispatches รอการตอบรับ
+                    {!dispatchLoading && pendingDispatches.length > 0 && (
+                      <span className="ml-2 bg-orange-500 text-white text-xs rounded-full px-2 py-0.5">
+                        {pendingDispatches.length}
+                      </span>
+                    )}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadPendingDispatches}
+                    disabled={dispatchLoading}
+                    className="text-xs text-orange-700 hover:underline"
+                  >
+                    {dispatchLoading ? "โหลด…" : "รีเฟรช"}
+                  </button>
+                  <button
+                    onClick={() => setDispatchDismissed(true)}
+                    className="text-orange-400 hover:text-orange-700 text-lg leading-none"
+                    aria-label="ปิด"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              {dispatchLoading ? (
+                <div className="flex items-center gap-2 text-sm text-orange-700">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500" />
+                  กำลังตรวจสอบ pending dispatches…
+                </div>
+              ) : pendingDispatches.length === 0 ? (
+                <p className="text-sm text-orange-700">
+                  ไม่มี pending dispatch
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {pendingDispatches.map((d) => (
+                    <div
+                      key={d.dispatchId}
+                      className="bg-white rounded-lg border border-orange-200 px-4 py-3 flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {d.dispatchId}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Request: {d.requestId}
+                          {d.priorityLevel != null && (
+                            <span className="ml-2 text-orange-700">
+                              ⚡ Priority {d.priorityLevel}
+                            </span>
+                          )}
+                          <span className="ml-2">
+                            {new Date(d.dispatchedAt).toLocaleString("th-TH", {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() =>
+                          router.push(
+                            `/mission?id=${encodeURIComponent(d.requestId)}`,
+                          )
+                        }
+                        className="text-sm bg-orange-500 text-white rounded-lg px-3 py-1.5 font-medium hover:bg-orange-600 transition shrink-0 ml-4"
+                      >
+                        ดูและตอบรับ →
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
         {/* Status summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
