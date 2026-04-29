@@ -8,6 +8,7 @@ import {
   MissionStatus,
   VALID_TRANSITIONS,
   STATUS_LABELS,
+  RescueRequestCitizenStatus,
 } from "@/lib/types";
 import Navbar from "@/components/Navbar";
 import StatusBadge from "@/components/StatusBadge";
@@ -52,8 +53,24 @@ function MissionDetailContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const geoDetected = useRef(false);
 
+  // Dispatch Accept/Decline state
+  const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
+  const [dispatchMsg, setDispatchMsg] = useState("");
+  const [declineMode, setDeclineMode] = useState(false);
+  const [declineNote, setDeclineNote] = useState("");
+
+  // RescueRequest extended detail
+  const [requestDetail, setRequestDetail] =
+    useState<RescueRequestCitizenStatus | null>(null);
+  const [requestDetailLoading, setRequestDetailLoading] = useState(false);
+
   useEffect(() => {
-    if (isReady && !config) router.push("/");
+    if (!isReady) return;
+    if (!config?.apiUrl || !config?.apiKey) {
+      router.push("/");
+    } else if (!config.teamId) {
+      router.push("/teams");
+    }
   }, [isReady, config, router]);
 
   useEffect(() => {
@@ -68,6 +85,11 @@ function MissionDetailContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mission]);
 
+  useEffect(() => {
+    if (mission?.request_id && config?.rescueRequestUrl) loadRequestDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mission?.request_id, config?.rescueRequestUrl]);
+
   async function loadMission() {
     const client = getClient();
     if (!client) return;
@@ -80,6 +102,72 @@ function MissionDetailContent() {
       setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadRequestDetail() {
+    if (!config?.rescueRequestUrl || !requestId) return;
+    setRequestDetailLoading(true);
+    try {
+      const base = config.rescueRequestUrl.replace(/\/+$/, "");
+      const res = await fetch(
+        `${base}/citizen/rescue-requests/${encodeURIComponent(requestId)}/status`,
+        { signal: AbortSignal.timeout(6000) },
+      );
+      if (res.ok) {
+        const data: RescueRequestCitizenStatus = await res.json();
+        setRequestDetail(data);
+      }
+    } catch {
+      // silently ignore — enrichment only
+    } finally {
+      setRequestDetailLoading(false);
+    }
+  }
+
+  async function handleDispatchAction(action: "ACCEPT" | "DECLINE") {
+    if (!mission?.dispatch_id || !config?.manageDispatchUrl) return;
+    setDispatchSubmitting(true);
+    setDispatchMsg("");
+    try {
+      const base = config.manageDispatchUrl.replace(/\/+$/, "");
+      const res = await fetch(
+        `${base}/v1/dispatches/${encodeURIComponent(mission.dispatch_id)}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            status: action,
+            note: action === "DECLINE" ? declineNote.trim() : "",
+          }),
+        },
+      );
+      if (res.ok) {
+        setDispatchMsg(
+          action === "ACCEPT"
+            ? "✅ รับงานสำเร็จ — dispatch สถานะเปลี่ยนเป็น ACCEPT"
+            : "❌ ปฏิเสธ dispatch สำเร็จ",
+        );
+        setDeclineMode(false);
+        setDeclineNote("");
+        await loadMission();
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        const msg =
+          (errBody as Record<string, string>)?.message ||
+          (errBody as Record<string, string>)?.error ||
+          String(res.status);
+        setDispatchMsg(`❌ ไม่สำเร็จ: ${msg}`);
+      }
+    } catch (err) {
+      setDispatchMsg(
+        `❌ ${err instanceof Error ? err.message : "เชื่อมต่อไม่ได้"}`,
+      );
+    } finally {
+      setDispatchSubmitting(false);
     }
   }
 
@@ -398,6 +486,245 @@ function MissionDetailContent() {
                 </div>
               </div>
             </div>
+
+            {/* Accept/Decline Dispatch Card */}
+            {mission.dispatch_id &&
+              mission.dispatch_status === "PENDING" &&
+              config.manageDispatchUrl && (
+                <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-2xl">📨</span>
+                    <div>
+                      <h2 className="text-lg font-semibold text-orange-900">
+                        Dispatch รอการตอบรับ
+                      </h2>
+                      <p className="text-sm text-orange-700">
+                        {mission.dispatch_id}
+                        {mission.priority_level != null && (
+                          <span className="ml-2">
+                            ⚡ Priority {mission.priority_level}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {dispatchMsg && (
+                    <div
+                      className={`rounded-lg px-3 py-2 text-sm mb-4 ${
+                        dispatchMsg.startsWith("✅")
+                          ? "bg-green-50 text-green-700 border border-green-200"
+                          : "bg-red-50 text-red-700 border border-red-200"
+                      }`}
+                    >
+                      {dispatchMsg}
+                    </div>
+                  )}
+
+                  {!declineMode ? (
+                    <div className="flex gap-3 flex-wrap">
+                      <button
+                        onClick={() => handleDispatchAction("ACCEPT")}
+                        disabled={dispatchSubmitting}
+                        className="flex items-center gap-2 bg-green-600 text-white rounded-lg px-5 py-2.5 font-medium hover:bg-green-700 transition disabled:opacity-50"
+                      >
+                        {dispatchSubmitting ? (
+                          <span className="animate-spin">⏳</span>
+                        ) : (
+                          "✅"
+                        )}
+                        รับงาน (ACCEPT)
+                      </button>
+                      <button
+                        onClick={() => setDeclineMode(true)}
+                        disabled={dispatchSubmitting}
+                        className="flex items-center gap-2 bg-white border border-red-300 text-red-700 rounded-lg px-5 py-2.5 font-medium hover:bg-red-50 transition disabled:opacity-50"
+                      >
+                        ❌ ปฏิเสธ (DECLINE)
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          เหตุผลที่ปฏิเสธ (ไม่บังคับ)
+                        </label>
+                        <textarea
+                          value={declineNote}
+                          onChange={(e) => setDeclineNote(e.target.value)}
+                          rows={2}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none"
+                          placeholder="เช่น ทีมกำลังปฏิบัติงานอยู่..."
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleDispatchAction("DECLINE")}
+                          disabled={dispatchSubmitting}
+                          className="bg-red-600 text-white rounded-lg px-5 py-2.5 font-medium hover:bg-red-700 transition disabled:opacity-50"
+                        >
+                          {dispatchSubmitting ? "กำลังส่ง…" : "ยืนยันปฏิเสธ"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeclineMode(false);
+                            setDeclineNote("");
+                          }}
+                          className="bg-white border border-gray-300 text-gray-700 rounded-lg px-5 py-2.5 font-medium hover:bg-gray-50 transition"
+                        >
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            {/* Extended Request Detail from RescueRequest */}
+            {config.rescueRequestUrl &&
+              (requestDetailLoading || requestDetail) && (
+                <div className="bg-white rounded-xl border border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">
+                      🆘 ข้อมูลผู้ขอความช่วยเหลือ
+                    </h2>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      RescueRequest
+                    </span>
+                  </div>
+                  {requestDetailLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                      กำลังโหลดข้อมูล…
+                    </div>
+                  ) : requestDetail ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                      {requestDetail.peopleCount != null && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            จำนวนผู้ประสบภัย
+                          </span>
+                          <p className="font-semibold text-lg text-red-700">
+                            {requestDetail.peopleCount} คน
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.requestType && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            ประเภทคำขอ
+                          </span>
+                          <p className="font-medium">
+                            {requestDetail.requestType}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.priorityLevel && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            ระดับความเร่งด่วน
+                          </span>
+                          <p className="font-medium">
+                            {requestDetail.priorityLevel}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.contactName && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            ผู้ติดต่อ
+                          </span>
+                          <p className="font-medium">
+                            {requestDetail.contactName}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.contactPhoneMasked && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            เบอร์โทร
+                          </span>
+                          <p className="font-medium font-mono">
+                            {requestDetail.contactPhoneMasked}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.stateVersion != null && (
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            State Version
+                          </span>
+                          <p className="font-medium">
+                            v{requestDetail.stateVersion}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.specialNeeds && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <span className="text-xs text-gray-500">
+                            ความต้องการพิเศษ
+                          </span>
+                          <p className="font-medium text-amber-700">
+                            ⚠️{" "}
+                            {Array.isArray(requestDetail.specialNeeds)
+                              ? requestDetail.specialNeeds.join(", ")
+                              : requestDetail.specialNeeds}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.location && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <span className="text-xs text-gray-500">
+                            ที่อยู่โดยละเอียด
+                          </span>
+                          <p className="font-medium">
+                            {[
+                              requestDetail.location.addressLine,
+                              requestDetail.location.locationDetails,
+                              requestDetail.location.subdistrict,
+                              requestDetail.location.district,
+                              requestDetail.location.province,
+                            ]
+                              .filter(Boolean)
+                              .join(", ") || "—"}
+                          </p>
+                          {requestDetail.location.latitude != null && (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              GPS: {requestDetail.location.latitude},{" "}
+                              {requestDetail.location.longitude}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {requestDetail.statusMessage && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <span className="text-xs text-gray-500">
+                            สถานะ (RescueRequest)
+                          </span>
+                          <p className="font-medium">
+                            {requestDetail.status} —{" "}
+                            {requestDetail.statusMessage}
+                          </p>
+                        </div>
+                      )}
+                      {requestDetail.submittedAt && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <span className="text-xs text-gray-500">
+                            ยื่นคำขอเมื่อ
+                          </span>
+                          <p className="font-medium">
+                            {new Date(requestDetail.submittedAt).toLocaleString(
+                              "th-TH",
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
 
             {/* Team Info Card (RescueTeam Service) */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
