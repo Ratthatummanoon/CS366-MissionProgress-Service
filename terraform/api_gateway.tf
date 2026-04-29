@@ -390,6 +390,81 @@ resource "aws_api_gateway_integration_response" "options_incidents" {
 }
 
 # ---------------------------------------------------
+# Resource: /health
+# ---------------------------------------------------
+resource "aws_api_gateway_resource" "health" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part   = "health"
+}
+
+# GET /health (no auth)
+resource "aws_api_gateway_method" "health_check" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.health.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "health_check" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.health.id
+  http_method             = aws_api_gateway_method.health_check.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.health_check.invoke_arn
+}
+
+# OPTIONS /health (CORS)
+resource "aws_api_gateway_method" "options_health" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.health.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_health" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.options_health.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_health" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.options_health.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_health" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.health.id
+  http_method = aws_api_gateway_method.options_health.http_method
+  status_code = aws_api_gateway_method_response.options_health.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,x-api-key,X-Rescue-Team-ID'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# ---------------------------------------------------
 # Gateway Responses — add CORS headers to all error responses
 # Without this, authorizer 403/401 errors arrive without CORS headers
 # and browsers report them as CORS errors instead of auth errors.
@@ -471,6 +546,10 @@ resource "aws_api_gateway_deployment" "deployment" {
       aws_api_gateway_method.options_presigned_url.id,
       aws_api_gateway_method.options_incidents.id,
       aws_api_gateway_authorizer.lambda_auth.id,
+      aws_api_gateway_resource.health.id,
+      aws_api_gateway_method.health_check.id,
+      aws_api_gateway_integration.health_check.id,
+      aws_api_gateway_method.options_health.id,
       aws_api_gateway_gateway_response.access_denied.id,
       aws_api_gateway_gateway_response.unauthorized.id,
       aws_api_gateway_gateway_response.default_4xx.id,
