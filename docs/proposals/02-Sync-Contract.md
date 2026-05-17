@@ -267,7 +267,7 @@ DISPATCHED ──→ EN_ROUTE ──→ ON_SITE ──→ RESOLVED
 
 ## Response
 
-### Success `200 OK` — Degraded Mode (Demo 1 เสมอ)
+### Success `200 OK` — Degraded Mode
 
 **Response Headers:**
 
@@ -311,7 +311,7 @@ X-Trace-Id: f6a7b8c9-d0e1-2345-fab0-456789012345
 }
 ```
 
-### Success `200 OK` — Full Mode (Demo 2+ เมื่อ RescueRequest Service พร้อม)
+### Success `200 OK` — Full Mode (สถานะปัจจุบัน)
 
 ```json
 {
