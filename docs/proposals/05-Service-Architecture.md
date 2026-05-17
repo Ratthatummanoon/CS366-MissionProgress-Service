@@ -61,7 +61,8 @@ graph TD
     EB -->|"3 Rules"| ExtLog
 
     %% --- mission-assigned-handler ---
-    ManageDispatchAPI -.->|"DispatchOrderCreated event"| AssignHandler
+    ManageDispatchAPI -.->|"DispatchOrderCreated event"| EB
+    EB -.->|"Trigger: DispatchOrderCreated"| AssignHandler
     AssignHandler -->|"Create MissionAssignment"| DB_Assign
     AssignHandler -->|"Create Timeline Entry"| DB_Timeline
     AssignHandler -->|"Fetch incident_id"| RescueReqAPI
@@ -117,13 +118,14 @@ graph TD
 
 ### Routes
 
-| Method | Path                                            | Target Lambda   |
-| ------ | ----------------------------------------------- | --------------- |
-| GET    | /missions/{request_id}                          | get-mission     |
-| POST   | /missions/{request_id}/progress                 | report-progress |
-| POST   | /missions/{request_id}/presigned-url            | presigned-url   |
-| GET    | /missions/{request_id}/presigned-url?image_key= | presigned-url   |
-| GET    | /missions (header: X-Rescue-Team-ID)            | list-missions   |
+| Method | Path                                            | Auth   | Target Lambda   |
+| ------ | ----------------------------------------------- | ------ | --------------- |
+| GET    | /missions/{request_id}                          | CUSTOM | get-mission     |
+| POST   | /missions/{request_id}/progress                 | CUSTOM | report-progress |
+| POST   | /missions/{request_id}/presigned-url            | CUSTOM | presigned-url   |
+| GET    | /missions/{request_id}/presigned-url?image_key= | CUSTOM | presigned-url   |
+| GET    | /missions (header: X-Rescue-Team-ID)            | CUSTOM | list-missions   |
+| GET    | /health                                         | NONE   | health-check    |
 
 ---
 
@@ -214,11 +216,11 @@ graph TD
 
 ### Events
 
-| Event                  | Trigger                 | Demo 1          | Demo 2+                   |
-| ---------------------- | ----------------------- | --------------- | ------------------------- |
-| MissionStatusChanged   | ทุกครั้งที่สถานะเปลี่ยน | CloudWatch Logs | Incident + Dispatch       |
-| MissionBackupRequested | NEED_BACKUP             | CloudWatch Logs | Prioritization            |
-| ImpactLevelUpdated     | มี new_impact_level     | CloudWatch Logs | Incident + Prioritization |
+| Event                  | Trigger                 | สถานะปัจจุบัน                                           |
+| ---------------------- | ----------------------- | ------------------------------------------------------- |
+| MissionStatusChanged   | ทุกครั้งที่สถานะเปลี่ยน | ✅ SQS Route Active (IncidentTracking + Dispatch)       |
+| MissionBackupRequested | NEED_BACKUP             | ✅ SQS Route Active (Prioritization)                    |
+| ImpactLevelUpdated     | มี new_impact_level     | ✅ SQS Route Active (IncidentTracking + Prioritization) |
 
 ---
 
@@ -395,11 +397,11 @@ graph TD
 
 ### Event Mapping
 
-| Event                  | Trigger     | Target (Demo 2+)          |
-| ---------------------- | ----------- | ------------------------- |
-| MissionStatusChanged   | ทุกครั้ง    | Incident + Dispatch       |
-| MissionBackupRequested | NEED_BACKUP | Prioritization            |
-| ImpactLevelUpdated     | มี impact   | Incident + Prioritization |
+| Event                  | Trigger     | Target                                     |
+| ---------------------- | ----------- | ------------------------------------------ |
+| MissionStatusChanged   | ทุกครั้ง    | ✅ SQS → IncidentTracking + Dispatch       |
+| MissionBackupRequested | NEED_BACKUP | ✅ SQS → Prioritization                    |
+| ImpactLevelUpdated     | มี impact   | ✅ SQS → IncidentTracking + Prioritization |
 
 ---
 
