@@ -24,11 +24,11 @@
 
 ### Interaction
 
-| ทิศทาง         | ช่องทาง                             | รายละเอียด                                                   | Demo 1                          | Demo 2+               |
-| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------- | --------------------- |
-| ~~ขาออก Sync~~ | ~~HTTP GET /missions/{request_id}~~ | ~~ดึงข้อมูล Incident~~ → ย้ายไปใช้ RescueRequest Service แทน | ~~⚠️ Mock (timeout → partial)~~ | ~~✅ URL จริง [TBD]~~ |
-| ขาออก Async    | EventBridge MissionStatusChanged    | อัปเดตสถานะ Incident                                         | ✅ → CloudWatch Logs            | 🔜 → Service จริง     |
-| ขาออก Async    | EventBridge ImpactLevelUpdated      | อัปเดต Impact Level                                          | ✅ → CloudWatch Logs            | 🔜 → Service จริง     |
+| ทิศทาง         | ช่องทาง                             | รายละเอียด                                                   | Demo 1                          | Demo 2+                                           |
+| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------- | ------------------------------------------------- |
+| ~~ขาออก Sync~~ | ~~HTTP GET /missions/{request_id}~~ | ~~ดึงข้อมูล Incident~~ → ย้ายไปใช้ RescueRequest Service แทน | ~~⚠️ Mock (timeout → partial)~~ | ~~✅ URL จริง [TBD]~~                             |
+| ขาออก Async    | EventBridge MissionStatusChanged    | อัปเดตสถานะ Incident                                         | ✅ → CloudWatch Logs            | ✅ CloudWatch Logs (รอ SQS ARN จาก Incident Team) |
+| ขาออก Async    | EventBridge ImpactLevelUpdated      | อัปเดต Impact Level                                          | ✅ → CloudWatch Logs            | ✅ CloudWatch Logs (รอ SQS ARN จาก Incident Team) |
 
 > **หมายเหตุ:** Synchronous call ออก IncidentTracking ถูกยกเลิกแล้ว — ข้อมูล description/location/type ดึงมาจาก RescueRequest Service แทน (เพราะ RescueRequest Service เป็นเจ้าของ request context)
 
@@ -39,15 +39,12 @@
 | กรณี                  | การจัดการ                                                        |
 | --------------------- | ---------------------------------------------------------------- |
 | Sync GET ล้มเหลว      | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
-| Event Publish ล้มเหลว | **Outbox Pattern** → retry ภายหลัง                               |
+| Event Publish ล้มเหลว | ✅ **Outbox Pattern** — outbox-processor Lambda retry ทุก 1 นาที |
 
 ---
 
-### TBD
-
-- API path & response format
-- Service URL
-- การ subscribe EventBridge
+> **หมายเหตุ:** เนื่องจาก Sync GET ไปยัง IncidentTracking ถูกยกเลิกแล้ว ข้อมูล description/location/type ดึงจาก RescueRequest Service แทน
+> Async events ยังคง route ผ่าน EventBridge ไปยัง IncidentTracking เมื่อ endpoint พร้อม
 
 ---
 
@@ -71,7 +68,7 @@
 | ขาเข้า Async | EventBridge DispatchOrderCreated | สร้าง Mission Record (ผ่าน mission-assigned-handler)    | ✅ Implemented       |
 | ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อคทีม (BUSY → AVAILABLE)                           | ✅ → CloudWatch Logs |
 | ขาออก Sync   | GET /v1/dispatches?teamId=       | ดึง dispatch status, priority_level (เสริม get-mission) | ✅ Active (parallel) |
-| ขาเข้า Sync  | GET /missions/{request_id}       | Dispatcher ดู Timeline + รูปภาพ                         | [TBD]                |
+| ขาเข้า Sync  | GET /missions/{request_id}       | Dispatcher ดู Timeline + รูปภาพ                         | ✅ Implemented       |
 
 ---
 
@@ -137,10 +134,10 @@
 
 ### Interaction
 
-| ทิศทาง      | Event                  | รายละเอียด           | Demo 1             | Demo 2+ |
-| ----------- | ---------------------- | -------------------- | ------------------ | ------- |
-| ขาออก Async | MissionBackupRequested | คำนวณ Priority ใหม่  | ✅ CloudWatch Logs | 🔜      |
-| ขาออก Async | ImpactLevelUpdated     | อัปเดตลำดับความสำคัญ | ✅ CloudWatch Logs | 🔜      |
+| ทิศทาง      | Event                  | รายละเอียด           | Demo 1             | Demo 2+                                                 |
+| ----------- | ---------------------- | -------------------- | ------------------ | ------------------------------------------------------- |
+| ขาออก Async | MissionBackupRequested | คำนวณ Priority ใหม่  | ✅ CloudWatch Logs | ✅ CloudWatch Logs (รอ SQS ARN จาก Prioritization Team) |
+| ขาออก Async | ImpactLevelUpdated     | อัปเดตลำดับความสำคัญ | ✅ CloudWatch Logs | ✅ CloudWatch Logs (รอ SQS ARN จาก Prioritization Team) |
 
 ---
 
@@ -156,12 +153,12 @@
 
 ### Overview
 
-| Field             | Value                           |
-| ----------------- | ------------------------------- |
-| Type              | Infrastructure (Object Storage) |
-| Interaction Style | Synchronous                     |
-| Criticality       | Medium                          |
-| Demo 2+           | Presigned URL + Direct Upload   |
+| Field             | Value                                                      |
+| ----------------- | ---------------------------------------------------------- |
+| Type              | Infrastructure (Object Storage)                            |
+| Interaction Style | Synchronous                                                |
+| Criticality       | Medium                                                     |
+| สถานะ             | ✅ Implemented (presigned-url Lambda + S3 bucket deployed) |
 
 ---
 
@@ -219,10 +216,7 @@
 | ---------------- | ---------------------------------------------------------------- |
 | Sync GET ล้มเหลว | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
 
-### TBD
-
-- Service URL (prod)
-- Bearer token สำหรับ service-to-service auth
+> **หมายเหตุ:** Service URL และ Bearer token configure ผ่าน Lambda environment variable (`RESCUE_REQUEST_SERVICE_URL`, `SERVICE_BEARER_TOKEN`) — ไม่ hardcode ใน code
 
 ---
 
@@ -312,9 +306,9 @@
 
 ### Interaction
 
-| ทิศทาง     | ช่องทาง         | รายละเอียด                             | Demo 1        | Demo 2+ |
-| ---------- | --------------- | -------------------------------------- | ------------- | ------- |
-| ขาออก Sync | HTTP GET /teams | ดึงข้อมูลทีม (ล้มเหลว → Degraded Mode) | Degraded Mode | [TBD]   |
+| ทิศทาง     | ช่องทาง         | รายละเอียด                             | Demo 1        | Demo 2+                    |
+| ---------- | --------------- | -------------------------------------- | ------------- | -------------------------- |
+| ขาออก Sync | HTTP GET /teams | ดึงข้อมูลทีม (ล้มเหลว → Degraded Mode) | Degraded Mode | ✅ Active (URL configured) |
 
 ### Failure Handling
 
@@ -322,24 +316,24 @@
 | ---------------- | ---------------------------------------------------------------- |
 | Sync GET ล้มเหลว | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
 
-### TBD
+### Configured
 
-- Service URL
-- Bearer token สำหรับ service-to-service auth
+- `RESCUE_TEAM_SERVICE_URL`: `https://uuh5csx5hg.execute-api.ap-southeast-1.amazonaws.com`
+- `RESCUE_TEAM_SERVICE_TOKEN`: set via `terraform.tfvars`
 
 ---
 
 ## **📊 สรุปภาพรวม**
 
-| #   | Dependency         | Type           | Interaction   | Criticality | Demo 1      | Demo 2+      |
-| --- | ------------------ | -------------- | ------------- | ----------- | ----------- | ------------ |
-| 1   | IncidentTracking   | Service        | Async only    | Medium      | Logs        | 🔜           |
-| 2   | Dispatch           | Service        | Bidirectional | Critical    | Seed + Logs | 🔜           |
-| 3   | Prioritization     | Service        | Async         | Medium      | Logs        | 🔜           |
-| 4   | S3                 | Infrastructure | Upload        | Medium      | ❌          | 🔜           |
-| 5   | RescueRequest      | Service        | Sync          | High        | ❌          | ✅ Real      |
-| 6   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅           |
-| 7   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | Real Targets |
-| 8   | RescueTeam         | Service        | Sync          | Medium      | Degraded    | [TBD]        |
+| #   | Dependency         | Type           | Interaction   | Criticality | Demo 1      | Demo 2+                          |
+| --- | ------------------ | -------------- | ------------- | ----------- | ----------- | -------------------------------- |
+| 1   | IncidentTracking   | Service        | Async only    | Medium      | Logs        | ✅ CloudWatch Logs (SQS pending) |
+| 2   | Dispatch           | Service        | Bidirectional | Critical    | Seed + Logs | ✅ Partial (sync URL pending)    |
+| 3   | Prioritization     | Service        | Async         | Medium      | Logs        | ✅ CloudWatch Logs (SQS pending) |
+| 4   | S3                 | Infrastructure | Upload        | Medium      | ✅          | ✅                               |
+| 5   | RescueRequest      | Service        | Sync          | High        | ❌          | ✅ Real                          |
+| 6   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅                               |
+| 7   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | ✅ Real Bus + Outbox Processor   |
+| 8   | RescueTeam         | Service        | Sync          | Medium      | Degraded    | ✅ Active                        |
 
 ---

@@ -6,15 +6,15 @@
 
 ### ข้อมูลทั่วไป
 
-| Field             | Value                                                 |
-| ----------------- | ----------------------------------------------------- |
-| Message Name      | MissionStatusChangedEvent                             |
-| Interaction Style | Asynchronous (Publish/Subscribe)                      |
-| Producer          | MissionProgress Service (report-progress Lambda — Go) |
-| Consumers         | IncidentTracking, Dispatch Management                 |
-| Channel           | EventBridge (mission-progress-events)                 |
-| Demo 1            | ✅ CloudWatch Logs                                    |
-| Demo 2+           | 🔜 Route ไป Service จริง                              |
+| Field             | Value                                                                        |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Message Name      | MissionStatusChangedEvent                                                    |
+| Interaction Style | Asynchronous (Publish/Subscribe)                                             |
+| Producer          | MissionProgress Service (report-progress Lambda — Go)                        |
+| Consumers         | IncidentTracking, Dispatch Management                                        |
+| Channel           | EventBridge (mission-progress-events)                                        |
+| Demo 1            | ✅ CloudWatch Logs                                                           |
+| Demo 2+           | ✅ EventBridge configured — routing ไปยัง real services เมื่อ endpoint พร้อม |
 
 ---
 
@@ -81,10 +81,10 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter                        | Demo 1 | Demo 2+    |
-| ---------------- | ---------------------------------- | ------ | ---------- |
-| IncidentTracking | detail-type = MissionStatusChanged | Logs   | 🔜 Service |
-| Dispatch         | + new_status = RESOLVED            | Logs   | 🔜 Service |
+| Consumer         | Rule Filter                        | สถานะปัจจุบัน                                      |
+| ---------------- | ---------------------------------- | -------------------------------------------------- |
+| IncidentTracking | detail-type = MissionStatusChanged | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
+| Dispatch         | + new_status = RESOLVED            | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
 
 ---
 
@@ -155,9 +155,9 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
 
 ### Consumer Routing
 
-| Consumer       | Rule Filter            | Demo 1 | Demo 2+ |
-| -------------- | ---------------------- | ------ | ------- |
-| Prioritization | MissionBackupRequested | Logs   | 🔜      |
+| Consumer       | Rule Filter            | สถานะปัจจุบัน                                      |
+| -------------- | ---------------------- | -------------------------------------------------- |
+| Prioritization | MissionBackupRequested | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
 
 ---
 
@@ -221,10 +221,10 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter        | Demo 1 | Demo 2+ |
-| ---------------- | ------------------ | ------ | ------- |
-| IncidentTracking | ImpactLevelUpdated | Logs   | 🔜      |
-| Prioritization   | ImpactLevelUpdated | Logs   | 🔜      |
+| Consumer         | Rule Filter        | สถานะปัจจุบัน                                      |
+| ---------------- | ------------------ | -------------------------------------------------- |
+| IncidentTracking | ImpactLevelUpdated | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
+| Prioritization   | ImpactLevelUpdated | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
 
 ---
 
