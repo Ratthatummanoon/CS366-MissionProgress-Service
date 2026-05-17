@@ -81,10 +81,10 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter                        | สถานะปัจจุบัน                                      |
-| ---------------- | ---------------------------------- | -------------------------------------------------- |
-| IncidentTracking | detail-type = MissionStatusChanged | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
-| Dispatch         | + new_status = RESOLVED            | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
+| Consumer         | Rule Filter                        | สถานะปัจจุบัน       |
+| ---------------- | ---------------------------------- | ------------------- |
+| IncidentTracking | detail-type = MissionStatusChanged | ✅ SQS Route Active |
+| Dispatch         | + new_status = RESOLVED            | ✅ SQS Route Active |
 
 ---
 
@@ -155,9 +155,9 @@ Event เมื่อสถานะเป็น `NEED_BACKUP`
 
 ### Consumer Routing
 
-| Consumer       | Rule Filter            | สถานะปัจจุบัน                                      |
-| -------------- | ---------------------- | -------------------------------------------------- |
-| Prioritization | MissionBackupRequested | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
+| Consumer       | Rule Filter            | สถานะปัจจุบัน       |
+| -------------- | ---------------------- | ------------------- |
+| Prioritization | MissionBackupRequested | ✅ SQS Route Active |
 
 ---
 
@@ -221,10 +221,10 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter        | สถานะปัจจุบัน                                      |
-| ---------------- | ------------------ | -------------------------------------------------- |
-| IncidentTracking | ImpactLevelUpdated | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
-| Prioritization   | ImpactLevelUpdated | ✅ CloudWatch Logs (รอ endpoint จาก service owner) |
+| Consumer         | Rule Filter        | สถานะปัจจุบัน       |
+| ---------------- | ------------------ | ------------------- |
+| IncidentTracking | ImpactLevelUpdated | ✅ SQS Route Active |
+| Prioritization   | ImpactLevelUpdated | ✅ SQS Route Active |
 
 ---
 
