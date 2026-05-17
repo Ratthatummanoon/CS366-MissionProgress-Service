@@ -21,15 +21,15 @@ graph LR
     RescueTeamAPI["RescueTeam<br>Service"]
 
     %% --- S3 ---
-    S3[("Amazon S3<br>Evidence Bucket<br>(Demo 2+)")]
+    S3[("Amazon S3<br>Evidence Bucket")]
 
     %% --- Demo 1 Target ---
     subgraph Demo1Target ["Demo 1 Target"]
         CWL["CloudWatch Logs"]
     end
 
-    %% --- Downstream (Demo 2+) ---
-    subgraph Downstream ["Downstream — Demo 2+ 🔜"]
+    %% --- Downstream ---
+    subgraph Downstream ["Downstream ✅"]
         Incident["IncidentTracking<br>Service"]
         Dispatch["Dispatch Management<br>Service"]
         Priority["Rescue Prioritization<br>Service"]
@@ -39,8 +39,8 @@ graph LR
     App == "① POST /missions/{request_id}/progress<br>(Status + Note + Impact Level)" ==> MS
     App == "② GET /missions/{request_id}<br>(Timeline + State)" ==> MS
     DispatchUI == "③ GET /missions/{request_id}<br>(Timeline + Evidence)<br>[TBD]" ==> MS
-    App -. "⑥ POST /missions/{request_id}/presigned-url<br>(Demo 2+)" .-> MS
-    App -. "⑦ GET /missions?team_id=<br>(Demo 2+)" .-> MS
+    App -. "⑥ POST /missions/{request_id}/presigned-url" .-> MS
+    App -. "⑦ GET /missions (X-Rescue-Team-ID)" .-> MS
 
     %% === Outbound Synchronous ===
     MS == "④ GET /v1/rescue-requests/{requestId}<br>(Degraded Mode)" ==> RescueReqAPI
@@ -55,7 +55,7 @@ graph LR
     MS -. "⑤b Fallback: Outbox" .-> Outbox
 
     %% === Frontend Direct Upload ===
-    App -. "⑥c Direct Upload (PUT)<br>(Demo 2+)" .-> S3
+    App -. "⑥c Direct Upload (PUT)" .-> S3
 
     %% === Demo 1: EventBridge → CloudWatch Logs ===
     EB -. "MissionStatusChanged" .-> CWL
@@ -63,9 +63,9 @@ graph LR
     EB -. "ImpactLevelUpdated" .-> CWL
 
     %% === Demo 2+: EventBridge → Real Services ===
-    EB -. "🔜 MissionStatusChanged" .-> Incident
-    EB -. "🔜 MissionStatusChanged<br>(Rule: RESOLVED)" .-> Dispatch
-    EB -. "🔜 MissionBackupRequested<br>+ ImpactLevelUpdated" .-> Priority
+    EB -. "MissionStatusChanged" .-> Incident
+    EB -. "MissionStatusChanged RESOLVED" .-> Dispatch
+    EB -. "MissionBackupRequested + ImpactLevelUpdated" .-> Priority
 
     %% --- Styling ---
     linkStyle 0,1,2,3,4,5,6 stroke:#1565c0,stroke-width:2px
@@ -355,10 +355,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                                             | ทิศทาง                              | รายละเอียด                                                                                    | Demo 1               | Demo 2+   |
-| :-: | :-------------------------------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------- | :------------------- | :-------- |
-|  ④  | Sync `GET /v1/rescue-requests/{requestId}` (Bearer) | MissionProgress → RescueRequest     | ดึง description, location, requestType (ถ้าล้มเหลว → Degraded Mode, `data_source: "partial"`) | ✅ Active (parallel) | ✅ Active |
-| ⑤a  | Async `MissionStatusChanged`                        | MissionProgress → RescueRequest[^1] | แจ้งอัปเดตสถานะ Request ที่เชื่อมโยง                                                          | → CloudWatch Logs    | 🔜 TBD    |
+|  #  | ช่องทาง                                             | ทิศทาง                              | รายละเอียด                                                                                    | Demo 1               | Demo 2+             |
+| :-: | :-------------------------------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------- | :------------------- | :------------------ |
+|  ④  | Sync `GET /v1/rescue-requests/{requestId}` (Bearer) | MissionProgress → RescueRequest     | ดึง description, location, requestType (ถ้าล้มเหลว → Degraded Mode, `data_source: "partial"`) | ✅ Active (parallel) | ✅ Active           |
+| ⑤a  | Async `MissionStatusChanged`                        | MissionProgress → RescueRequest[^1] | แจ้งอัปเดตสถานะ Request ที่เชื่อมโยง                                                          | ✅ Active            | ✅ SQS Route Active |
 
 [^1]: RescueRequest Service รับ Event ผ่าน EventBridge หากมีการตั้งค่า rule
 
@@ -380,10 +380,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### Failure Handling
 
-| กรณี                                        | การจัดการ                                                                     |
-| :------------------------------------------ | :---------------------------------------------------------------------------- |
-| Sync GET ล้มเหลว (timeout 800ms + retry 2x) | **Degraded Mode** — ส่งเฉพาะข้อมูลที่มี → ทีมกู้ภัยยังทำงานได้ปกติ            |
-| Async Event Publish ล้มเหลว                 | **Outbox Pattern** → บันทึกลง EventOutbox → (Demo 2+) retry processor ส่งใหม่ |
+| กรณี                                        | การจัดการ                                                                  |
+| :------------------------------------------ | :------------------------------------------------------------------------- |
+| Sync GET ล้มเหลว (timeout 800ms + retry 2x) | **Degraded Mode** — ส่งเฉพาะข้อมูลที่มี → ทีมกู้ภัยยังทำงานได้ปกติ         |
+| Async Event Publish ล้มเหลว                 | **Outbox Pattern** → บันทึกลง EventOutbox → outbox-processor retry ส่งใหม่ |
 
 ---
 
@@ -394,17 +394,17 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                           | Demo 1            | Demo 2+                  |
-| :-: | :--------------------------- | :--------------------------------- | :--------------------------------------------------- | :---------------- | :----------------------- |
-| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")      | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
-| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต MD | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
+|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                           | Demo 1    | Demo 2+             |
+| :-: | :--------------------------- | :--------------------------------- | :--------------------------------------------------- | :-------- | :------------------ |
+| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")      | ✅ Active | ✅ SQS Route Active |
+| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต MD | ✅ Active | ✅ SQS Route Active |
 
 #### Failure Handling
 
-| กรณี                                  | การจัดการ                                             |
-| :------------------------------------ | :---------------------------------------------------- |
-| Async Event Publish ล้มเหลว           | Outbox Pattern → EventOutbox table → retry ใน Demo 2+ |
-| EventBridge → Incident Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)               |
+| กรณี                                  | การจัดการ                                                      |
+| :------------------------------------ | :------------------------------------------------------------- |
+| Async Event Publish ล้มเหลว           | ✅ Outbox Pattern → EventOutbox table → outbox-processor retry |
+| EventBridge → Incident Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)                        |
 
 ---
 
@@ -415,10 +415,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                                       | ทิศทาง                     | รายละเอียด                                                                       | Demo 1               | Demo 2+           |
-| :-: | :-------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------- | :------------------- | :---------------- |
-| ④b  | Sync `GET /v1/dispatches?teamId={teamId}`     | MissionProgress → Dispatch | ดึง dispatch status, priority level (ล้มเหลว → Degraded Mode, omit จาก response) | ✅ Active (parallel) | ✅ Active         |
-| ⑤b  | Async `MissionStatusChanged` (Rule: RESOLVED) | MissionProgress → Dispatch | แจ้งว่าภารกิจเสร็จ → ปลดล็อคทีมกู้ภัย (BUSY → AVAILABLE)                         | → CloudWatch Logs    | 🔜 → Service จริง |
+|  #  | ช่องทาง                                       | ทิศทาง                     | รายละเอียด                                                                       | Demo 1               | Demo 2+             |
+| :-: | :-------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------- | :------------------- | :------------------ |
+| ④b  | Sync `GET /v1/dispatches?teamId={teamId}`     | MissionProgress → Dispatch | ดึง dispatch status, priority level (ล้มเหลว → Degraded Mode, omit จาก response) | ✅ Active (parallel) | ✅ Active           |
+| ⑤b  | Async `MissionStatusChanged` (Rule: RESOLVED) | MissionProgress → Dispatch | แจ้งว่าภารกิจเสร็จ → ปลดล็อคทีมกู้ภัย (BUSY → AVAILABLE)                         | ✅ Active            | ✅ SQS Route Active |
 
 #### Expected API Response (④b Sync GET)
 
@@ -456,7 +456,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 | กรณี                                  | การจัดการ                                                                 |
 | :------------------------------------ | :------------------------------------------------------------------------ |
 | Sync GET ล้มเหลว                      | **Degraded Mode** → omit `dispatch_status`, `priority_level` จาก response |
-| EventBridge Publish ล้มเหลว           | Outbox Pattern → EventOutbox table → retry ใน Demo 2+                     |
+| EventBridge Publish ล้มเหลว           | ✅ Outbox Pattern → EventOutbox table → outbox-processor retry            |
 | EventBridge → Dispatch Target ล้มเหลว | EventBridge built-in retry (24 ชั่วโมง)                                   |
 
 ---
@@ -468,10 +468,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                        | ทิศทาง                           | รายละเอียด                                                           | Demo 1            | Demo 2+                  |
-| :-: | :----------------------------- | :------------------------------- | :------------------------------------------------------------------- | :---------------- | :----------------------- |
-| ⑤c  | Async `MissionBackupRequested` | MissionProgress → Prioritization | ทีมกู้ภัยต้องการกำลังเสริม (NEED_BACKUP) → คำนวณ Priority Score ใหม่ | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
-| ⑤d  | Async `ImpactLevelUpdated`     | MissionProgress → Prioritization | ส่ง Impact Level ล่าสุด → คำนวณลำดับความสำคัญใหม่                    | → CloudWatch Logs | 🔜 → Service จริง \[TBD] |
+|  #  | ช่องทาง                        | ทิศทาง                           | รายละเอียด                                                           | Demo 1    | Demo 2+             |
+| :-: | :----------------------------- | :------------------------------- | :------------------------------------------------------------------- | :-------- | :------------------ |
+| ⑤c  | Async `MissionBackupRequested` | MissionProgress → Prioritization | ทีมกู้ภัยต้องการกำลังเสริม (NEED_BACKUP) → คำนวณ Priority Score ใหม่ | ✅ Active | ✅ SQS Route Active |
+| ⑤d  | Async `ImpactLevelUpdated`     | MissionProgress → Prioritization | ส่ง Impact Level ล่าสุด → คำนวณลำดับความสำคัญใหม่                    | ✅ Active | ✅ SQS Route Active |
 
 #### Failure Handling
 
@@ -482,7 +482,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 ---
 
-## 5. Amazon S3 — Evidence Bucket (Demo 2+)
+## 5. Amazon S3 — Evidence Bucket ✅
 
 > **บทบาท:** เก็บรูปภาพหลักฐานจากหน้างาน
 
@@ -490,8 +490,8 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 |  #  | ช่องทาง                     | ทิศทาง                    | รายละเอียด                                                      | Demo 1 | Demo 2+ |
 | :-: | :-------------------------- | :------------------------ | :-------------------------------------------------------------- | :----: | :-----: |
-| ⑥b  | Sync Generate Presigned URL | presigned-url Lambda → S3 | สร้าง Presigned URL (PUT) อายุ 5 นาที                           |   ❌   |   🔜    |
-| ⑥c  | Frontend → S3 Direct        | Rescue Team → S3          | อัปโหลดรูปตรงไป S3 ด้วย Presigned URL (ไม่ผ่าน MissionProgress) |   ❌   |   🔜    |
+| ⑥b  | Sync Generate Presigned URL | presigned-url Lambda → S3 | สร้าง Presigned URL (PUT) อายุ 5 นาที                           |   ✅   |   ✅    |
+| ⑥c  | Frontend → S3 Direct        | Rescue Team → S3          | อัปโหลดรูปตรงไป S3 ด้วย Presigned URL (ไม่ผ่าน MissionProgress) |   ✅   |   ✅    |
 
 #### Failure Handling
 
@@ -598,7 +598,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 ## Routing — Demo 1 vs Demo 2+
 
-### Demo 1 (ปัจจุบัน): 3 EventBridge Rules → CloudWatch Logs
+### ปัจจุบัน: 3 EventBridge Rules → CloudWatch Logs
 
 | Rule                          | Pattern                               | Target               |
 | :---------------------------- | :------------------------------------ | :------------------- |
@@ -606,7 +606,7 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 | `backup-requested-rule`       | detail-type: `MissionBackupRequested` | CloudWatch Log Group |
 | `impact-level-updated-rule`   | detail-type: `ImpactLevelUpdated`     | CloudWatch Log Group |
 
-### Demo 2+ (แผน): เพิ่ม Rules → Route ไป Service จริง
+### SQS Targets ✅ Active
 
 | Event                    | Subscriber            | EventBridge Rule Filter                                             | Target                            |
 | :----------------------- | :-------------------- | :------------------------------------------------------------------ | :-------------------------------- |
@@ -635,10 +635,9 @@ EventBridge Publish ล้มเหลว
 }
 ```
 
-| Phase       | พฤติกรรม                                                                      |
-| :---------- | :---------------------------------------------------------------------------- |
-| **Demo 1**  | Records สะสมไว้ (ยังไม่มี processor)                                          |
-| **Demo 2+** | `outbox-processor` Lambda (ทุก 1 นาที) → Scan PENDING → Retry → SENT / FAILED |
+| Phase        | พฤติกรรม                                                                         |
+| :----------- | :------------------------------------------------------------------------------- |
+| **ปัจจุบัน** | ✅ `outbox-processor` Lambda (ทุก 1 นาที) → Scan PENDING → Retry → SENT / FAILED |
 
 > _สำคัญ: POST request ไม่ fail เพราะ EventBridge ล้มเหลว — ข้อมูลสถานะถูกบันทึกใน DynamoDB แล้ว_
 
@@ -662,22 +661,22 @@ EventBridge Publish ล้มเหลว
 
 ## Downstream / Outbound (ออกจาก MissionProgress)
 
-|  #  | Destination           | ช่องทาง     | Event / API                                     | Demo 1    | Demo 2+           |
-| :-: | :-------------------- | :---------- | :---------------------------------------------- | :-------- | :---------------- |
-|  ④  | RescueRequest         | Sync GET    | `GET /v1/rescue-requests/{requestId}`           | ✅ Active | ✅ Active         |
-| ④b  | ManageDispatch        | Sync GET    | `GET /v1/dispatches?teamId={teamId}`            | ✅ Active | ✅ Active         |
-| ④c  | RescueTeam            | Sync GET    | `GET /v1/teams/{teamId}`                        | ✅ Active | ✅ Active         |
-| ④d  | RescueTeam            | Sync PATCH  | `PATCH /v1/teams/{teamId}/status` (RESOLVED)    | ✅ Active | ✅ Active         |
-| ⑥b  | Amazon S3             | Sync        | Generate Presigned URL                          | ✅ Active | ✅ Active         |
-| ⑤a  | IncidentTracking      | Async Event | `MissionStatusChanged` + `ImpactLevelUpdated`   | → CW Logs | 🔜 → Service จริง |
-| ⑤b  | Dispatch Mgmt         | Async Event | `MissionStatusChanged` (Rule: RESOLVED)         | → CW Logs | 🔜 → Service จริง |
-| ⑤c  | Rescue Prioritization | Async Event | `MissionBackupRequested` + `ImpactLevelUpdated` | → CW Logs | 🔜 → Service จริง |
+|  #  | Destination           | ช่องทาง     | Event / API                                     | Demo 1    | Demo 2+             |
+| :-: | :-------------------- | :---------- | :---------------------------------------------- | :-------- | :------------------ |
+|  ④  | RescueRequest         | Sync GET    | `GET /v1/rescue-requests/{requestId}`           | ✅ Active | ✅ Active           |
+| ④b  | ManageDispatch        | Sync GET    | `GET /v1/dispatches?teamId={teamId}`            | ✅ Active | ✅ Active           |
+| ④c  | RescueTeam            | Sync GET    | `GET /v1/teams/{teamId}`                        | ✅ Active | ✅ Active           |
+| ④d  | RescueTeam            | Sync PATCH  | `PATCH /v1/teams/{teamId}/status` (RESOLVED)    | ✅ Active | ✅ Active           |
+| ⑥b  | Amazon S3             | Sync        | Generate Presigned URL                          | ✅ Active | ✅ Active           |
+| ⑤a  | IncidentTracking      | Async Event | `MissionStatusChanged` + `ImpactLevelUpdated`   | ✅ Active | ✅ SQS Route Active |
+| ⑤b  | Dispatch Mgmt         | Async Event | `MissionStatusChanged` (Rule: RESOLVED)         | ✅ Active | ✅ SQS Route Active |
+| ⑤c  | Rescue Prioritization | Async Event | `MissionBackupRequested` + `ImpactLevelUpdated` | ✅ Active | ✅ SQS Route Active |
 
 ## Frontend → S3 Direct (ไม่ผ่าน MissionProgress)
 
 |  #  | Source                 | Destination | ช่องทาง                  | Demo 1 | Demo 2+ |
 | :-: | :--------------------- | :---------- | :----------------------- | :----: | :-----: |
-| ⑥c  | Rescue Team (Frontend) | Amazon S3   | HTTP PUT (Presigned URL) |   ❌   |   🔜    |
+| ⑥c  | Rescue Team (Frontend) | Amazon S3   | HTTP PUT (Presigned URL) |   ✅   |   ✅    |
 
 ---
 
@@ -698,7 +697,7 @@ EventBridge Publish ล้มเหลว
 | กรณี                        | การจัดการ                                | Demo 1                | Demo 2+         |
 | :-------------------------- | :--------------------------------------- | :-------------------- | :-------------- |
 | IncidentTracking ล่ม        | Degraded Mode (`data_source: "partial"`) | ✅ เป็น Degraded เสมอ | ✅              |
-| EventBridge Publish ล้มเหลว | Outbox Pattern → EventOutbox table       | ✅ save only          | ✅ save + retry |
+| EventBridge Publish ล้มเหลว | Outbox Pattern → EventOutbox table       | ✅ save + retry       | ✅ save + retry |
 | Lambda Authorizer ล่ม       | HTTP 500                                 | ✅                    | ✅              |
-| S3 Presigned URL ล้มเหลว    | Lambda return 500 → User Retry           | —                     | 🔜              |
-| S3 Upload ล้มเหลว           | อนุญาตให้ "ข้าม" → ส่งแค่ Text Status    | —                     | 🔜              |
+| S3 Presigned URL ล้มเหลว    | Lambda return 500 → User Retry           | ✅                    | ✅              |
+| S3 Upload ล้มเหลว           | อนุญาตให้ "ข้าม" → ส่งแค่ Text Status    | ✅                    | ✅              |
