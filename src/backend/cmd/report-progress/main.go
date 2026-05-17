@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -84,14 +85,14 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		return response.Error(400, "INVALID_STATUS", "Invalid status value: "+req.Status), nil
 	}
 
-	// 4. Query mission by request_id
-	mission, err := missionRepo.GetMissionByRequestID(ctx, requestID)
+	// 4. Query mission by request_id — scoped to the calling team (ownership check + multi-team support)
+	mission, err := missionRepo.GetMissionByRequestIDAndTeamID(ctx, requestID, rescueTeamID)
 	if err != nil {
 		log.Printf("ERROR: query mission: %v", err)
 		return response.Error(500, "INTERNAL_ERROR", "Failed to query mission"), nil
 	}
 	if mission == nil {
-		return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request: "+requestID), nil
+		return response.Error(404, "REQUEST_NOT_FOUND", "No mission found for request "+requestID+" assigned to team "+rescueTeamID), nil
 	}
 
 	// 5. Validate state transition
@@ -102,14 +103,18 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			"Cannot transition from "+oldStatus+" to "+req.Status), nil
 	}
 
-	// 6. Update mission status
+	// 6. Update mission status with optimistic locking (ConditionExpression: current_status = oldStatus)
 	now := time.Now().UTC().Format(time.RFC3339)
 	mission.CurrentStatus = req.Status
 	mission.LastUpdatedAt = now
 	if req.NewImpactLevel != nil {
 		mission.LatestImpactLevel = *req.NewImpactLevel
 	}
-	if err := missionRepo.UpdateMissionStatus(ctx, mission); err != nil {
+	if err := missionRepo.UpdateMissionStatus(ctx, mission, oldStatus); err != nil {
+		if errors.Is(err, repository.ErrConditionalCheckFailed) {
+			return response.Error(409, "CONCURRENT_UPDATE_CONFLICT",
+				"Mission status was changed by another request. Please retry with the latest status."), nil
+		}
 		log.Printf("ERROR: update mission: %v", err)
 		return response.Error(500, "INTERNAL_ERROR", "Failed to update mission status"), nil
 	}
