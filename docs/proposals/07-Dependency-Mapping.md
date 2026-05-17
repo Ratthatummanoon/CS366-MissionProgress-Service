@@ -24,11 +24,11 @@
 
 ### Interaction
 
-| ทิศทาง         | ช่องทาง                             | รายละเอียด                                                   | Demo 1                          | Demo 2+                                           |
-| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------- | ------------------------------------------------- |
-| ~~ขาออก Sync~~ | ~~HTTP GET /missions/{request_id}~~ | ~~ดึงข้อมูล Incident~~ → ย้ายไปใช้ RescueRequest Service แทน | ~~⚠️ Mock (timeout → partial)~~ | ~~✅ URL จริง [TBD]~~                             |
-| ขาออก Async    | EventBridge MissionStatusChanged    | อัปเดตสถานะ Incident                                         | ✅ → CloudWatch Logs            | ✅ CloudWatch Logs (รอ SQS ARN จาก Incident Team) |
-| ขาออก Async    | EventBridge ImpactLevelUpdated      | อัปเดต Impact Level                                          | ✅ → CloudWatch Logs            | ✅ CloudWatch Logs (รอ SQS ARN จาก Incident Team) |
+| ทิศทาง         | ช่องทาง                             | รายละเอียด                                                   | Demo 1                          | Demo 2+               |
+| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------- | --------------------- |
+| ~~ขาออก Sync~~ | ~~HTTP GET /missions/{request_id}~~ | ~~ดึงข้อมูล Incident~~ → ย้ายไปใช้ RescueRequest Service แทน | ~~⚠️ Mock (timeout → partial)~~ | ~~✅ URL จริง [TBD]~~ |
+| ขาออก Async    | EventBridge MissionStatusChanged    | อัปเดตสถานะ Incident                                         | ✅ Active                       | ✅ SQS Route Active   |
+| ขาออก Async    | EventBridge ImpactLevelUpdated      | อัปเดต Impact Level                                          | ✅ Active                       | ✅ SQS Route Active   |
 
 > **หมายเหตุ:** Synchronous call ออก IncidentTracking ถูกยกเลิกแล้ว — ข้อมูล description/location/type ดึงมาจาก RescueRequest Service แทน (เพราะ RescueRequest Service เป็นเจ้าของ request context)
 
@@ -36,9 +36,9 @@
 
 ### Failure Handling
 
-| กรณี                  | การจัดการ                                                        |
-| --------------------- | ---------------------------------------------------------------- |
-| Sync GET ล้มเหลว      | **Degraded Mode** → ส่งเฉพาะข้อมูลที่มี (`data_source: partial`) |
+| กรณี | การจัดการ |
+| ---- | --------- |
+
 | Event Publish ล้มเหลว | ✅ **Outbox Pattern** — outbox-processor Lambda retry ทุก 1 นาที |
 
 ---
@@ -66,7 +66,7 @@
 | ทิศทาง       | ช่องทาง                          | รายละเอียด                                              | สถานะ                |
 | ------------ | -------------------------------- | ------------------------------------------------------- | -------------------- |
 | ขาเข้า Async | EventBridge DispatchOrderCreated | สร้าง Mission Record (ผ่าน mission-assigned-handler)    | ✅ Implemented       |
-| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อคทีม (BUSY → AVAILABLE)                           | ✅ → CloudWatch Logs |
+| ขาออก Async  | MissionStatusChanged (RESOLVED)  | ปลดล็อคทีม (BUSY → AVAILABLE)                           | ✅ SQS Route Active  |
 | ขาออก Sync   | GET /v1/dispatches?teamId=       | ดึง dispatch status, priority_level (เสริม get-mission) | ✅ Active (parallel) |
 | ขาเข้า Sync  | GET /missions/{request_id}       | Dispatcher ดู Timeline + รูปภาพ                         | ✅ Implemented       |
 
@@ -74,10 +74,10 @@
 
 ### Failure Handling
 
-| กรณี            | การจัดการ                                       |
-| --------------- | ----------------------------------------------- |
-| ไม่ได้รับ Event | Demo 1: ไม่กระทบ / Demo 2+: Mission ไม่ถูกสร้าง |
-| Publish ล้มเหลว | Outbox Pattern                                  |
+| กรณี            | การจัดการ                                                        |
+| --------------- | ---------------------------------------------------------------- |
+| ไม่ได้รับ Event | ภารกิจไม่ถูกสร้าง (ตรวจสอบ EventBridge configuration)            |
+| Publish ล้มเหลว | ✅ **Outbox Pattern** — outbox-processor Lambda retry ทุก 1 นาที |
 
 ---
 
@@ -134,10 +134,10 @@
 
 ### Interaction
 
-| ทิศทาง      | Event                  | รายละเอียด           | Demo 1             | Demo 2+                                                 |
-| ----------- | ---------------------- | -------------------- | ------------------ | ------------------------------------------------------- |
-| ขาออก Async | MissionBackupRequested | คำนวณ Priority ใหม่  | ✅ CloudWatch Logs | ✅ CloudWatch Logs (รอ SQS ARN จาก Prioritization Team) |
-| ขาออก Async | ImpactLevelUpdated     | อัปเดตลำดับความสำคัญ | ✅ CloudWatch Logs | ✅ CloudWatch Logs (รอ SQS ARN จาก Prioritization Team) |
+| ทิศทาง      | Event                  | รายละเอียด           | Demo 1    | Demo 2+             |
+| ----------- | ---------------------- | -------------------- | --------- | ------------------- |
+| ขาออก Async | MissionBackupRequested | คำนวณ Priority ใหม่  | ✅ Active | ✅ SQS Route Active |
+| ขาออก Async | ImpactLevelUpdated     | อัปเดตลำดับความสำคัญ | ✅ Active | ✅ SQS Route Active |
 
 ---
 
@@ -265,11 +265,11 @@
 
 ### Events
 
-| Event                  | Trigger             | Demo 1          | Demo 2+                   |
-| ---------------------- | ------------------- | --------------- | ------------------------- |
-| MissionStatusChanged   | สถานะเปลี่ยน        | CloudWatch Logs | Incident + Dispatch       |
-| MissionBackupRequested | NEED_BACKUP         | CloudWatch Logs | Prioritization            |
-| ImpactLevelUpdated     | มี new_impact_level | CloudWatch Logs | Incident + Prioritization |
+| Event                  | Trigger             | สถานะปัจจุบัน                                                                          |
+| ---------------------- | ------------------- | -------------------------------------------------------------------------------------- |
+| MissionStatusChanged   | สถานะเปลี่ยน        | ✅ CloudWatch Logs (SQS targets พร้อมใน Terraform, รอ ARN จาก Incident/Dispatch)       |
+| MissionBackupRequested | NEED_BACKUP         | ✅ CloudWatch Logs (SQS targets พร้อมใน Terraform, รอ ARN จาก Prioritization)          |
+| ImpactLevelUpdated     | มี new_impact_level | ✅ CloudWatch Logs (SQS targets พร้อมใน Terraform, รอ ARN จาก Incident/Prioritization) |
 
 ---
 
@@ -277,8 +277,7 @@
 
 **ระดับ 1: Publish ล้มเหลว**
 
-- ใช้ **Outbox Pattern**
-- Retry ผ่าน processor (Demo 2+)
+- ✅ ใช้ **Outbox Pattern** — outbox-processor Lambda retry ทุก 1 นาที
 
 **ระดับ 2: Delivery ล้มเหลว**
 
@@ -325,15 +324,15 @@
 
 ## **📊 สรุปภาพรวม**
 
-| #   | Dependency         | Type           | Interaction   | Criticality | Demo 1      | Demo 2+                          |
-| --- | ------------------ | -------------- | ------------- | ----------- | ----------- | -------------------------------- |
-| 1   | IncidentTracking   | Service        | Async only    | Medium      | Logs        | ✅ CloudWatch Logs (SQS pending) |
-| 2   | Dispatch           | Service        | Bidirectional | Critical    | Seed + Logs | ✅ Partial (sync URL pending)    |
-| 3   | Prioritization     | Service        | Async         | Medium      | Logs        | ✅ CloudWatch Logs (SQS pending) |
-| 4   | S3                 | Infrastructure | Upload        | Medium      | ✅          | ✅                               |
-| 5   | RescueRequest      | Service        | Sync          | High        | ❌          | ✅ Real                          |
-| 6   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅                               |
-| 7   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | ✅ Real Bus + Outbox Processor   |
-| 8   | RescueTeam         | Service        | Sync          | Medium      | Degraded    | ✅ Active                        |
+| #   | Dependency         | Type           | Interaction   | Criticality | Demo 1      | Demo 2+                        |
+| --- | ------------------ | -------------- | ------------- | ----------- | ----------- | ------------------------------ |
+| 1   | IncidentTracking   | Service        | Async only    | Medium      | Logs        | ✅ SQS Route Active            |
+| 2   | Dispatch           | Service        | Bidirectional | Critical    | Seed + Logs | ✅ Active                      |
+| 3   | Prioritization     | Service        | Async         | Medium      | Logs        | ✅ SQS Route Active            |
+| 4   | S3                 | Infrastructure | Upload        | Medium      | ✅          | ✅                             |
+| 5   | RescueRequest      | Service        | Sync          | High        | ❌          | ✅ Real                        |
+| 6   | API Gateway + Auth | Infrastructure | Sync          | Critical    | ✅          | ✅                             |
+| 7   | EventBridge        | Infrastructure | Async         | Critical    | Logs        | ✅ Real Bus + Outbox Processor |
+| 8   | RescueTeam         | Service        | Sync          | Medium      | Degraded    | ✅ Active                      |
 
 ---
