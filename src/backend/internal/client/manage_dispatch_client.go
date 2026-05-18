@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -107,4 +108,68 @@ func (c *ManageDispatchClient) GetDispatchByTeamAndRequest(ctx context.Context, 
 
 	log.Printf("WARN: ManageDispatchService unavailable after %d retries: %v", mdMaxRetries, lastErr)
 	return nil
+}
+
+// UpdateDispatchStatus calls PATCH /v1/dispatches/{id}/status to mark a dispatch as RESOLVED.
+// Endpoint: PATCH /v1/dispatches/{id}/status
+// Auth: Authorization: Bearer <token>
+// เรียกใช้ตอน mission RESOLVED เพื่อปิด Dispatch Order.
+// Best-effort — ถ้าล้มเหลว log แล้วผ่าน (ไม่ block response กลับ caller).
+func (c *ManageDispatchClient) UpdateDispatchStatus(ctx context.Context, dispatchID, status, teamID string) error {
+	url := fmt.Sprintf("%s/v1/dispatches/%s/status", c.baseURL, dispatchID)
+
+	body, _ := json.Marshal(map[string]string{
+		"status": status,
+		"teamId": teamID,
+		"note":   "Mission completed by MissionProgress Service",
+	})
+
+	var lastErr error
+	for attempt := 0; attempt <= mdMaxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := mdBackoffBase * (1 << (attempt - 1))
+			log.Printf("INFO: Retry %d/%d for ManageDispatchService.UpdateDispatchStatus after %v", attempt, mdMaxRetries, backoff)
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				log.Printf("WARNING: ManageDispatchService.UpdateDispatchStatus retry aborted — context cancelled")
+				return fmt.Errorf("context cancelled during UpdateDispatchStatus retry")
+			}
+		}
+
+		req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(body))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.bearerToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			log.Printf("WARNING: ManageDispatchService.UpdateDispatchStatus attempt %d failed (network): %v", attempt+1, err)
+			continue
+		}
+
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("ManageDispatchService.UpdateDispatchStatus returned %d", resp.StatusCode)
+			log.Printf("WARNING: ManageDispatchService.UpdateDispatchStatus attempt %d failed (5xx): status %d", attempt+1, resp.StatusCode)
+			continue
+		}
+
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			log.Printf("INFO: ManageDispatchService dispatch=%s updated to %s", dispatchID, status)
+			return nil
+		}
+		log.Printf("WARN: ManageDispatchService.UpdateDispatchStatus returned unexpected status %d (non-retryable)", resp.StatusCode)
+		return nil
+	}
+
+	log.Printf("WARN: ManageDispatchService.UpdateDispatchStatus failed after %d retries: %v", mdMaxRetries, lastErr)
+	return lastErr
 }
