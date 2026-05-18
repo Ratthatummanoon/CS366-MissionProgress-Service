@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,99 @@ func (c *RescueRequestClient) GetRequestDetail(ctx context.Context, requestID st
 
 	log.Printf("WARNING: RescueRequestService all retries exhausted for requestId=%s: %v", requestID, lastErr)
 	return nil
+}
+
+// postRescueCommand sends a POST to a RescueRequest command endpoint with optional JSON body.
+// Retries up to rrMaxRetries times on network errors and 5xx responses.
+func (c *RescueRequestClient) postRescueCommand(ctx context.Context, url string, body interface{}) error {
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("marshal body: %w", err)
+		}
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= rrMaxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := rrBackoffBase * (1 << (attempt - 1))
+			log.Printf("INFO: Retry %d/%d for RescueRequestService command after %v", attempt, rrMaxRetries, backoff)
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				log.Printf("WARNING: RescueRequestService command retry aborted — context cancelled")
+				return fmt.Errorf("context cancelled")
+			}
+		}
+
+		var req *http.Request
+		var err error
+		if len(bodyBytes) > 0 {
+			req, err = http.NewRequest(http.MethodPost, url, bytes.NewReader(bodyBytes))
+		} else {
+			req, err = http.NewRequest(http.MethodPost, url, nil)
+		}
+		if err != nil {
+			return fmt.Errorf("build request: %w", err)
+		}
+		if len(bodyBytes) > 0 {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if c.bearerToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.bearerToken)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			log.Printf("WARNING: RescueRequestService command attempt %d failed (network): %v", attempt+1, err)
+			continue
+		}
+
+		if resp.StatusCode >= 500 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("status %d", resp.StatusCode)
+			log.Printf("WARNING: RescueRequestService command attempt %d failed (5xx): status %d", attempt+1, resp.StatusCode)
+			continue
+		}
+
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+		// 4xx are non-retryable (409 = already in that state, etc.)
+		log.Printf("WARNING: RescueRequestService command returned non-retryable status %d for url=%s", resp.StatusCode, url)
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	log.Printf("WARNING: RescueRequestService command all retries exhausted for url=%s: %v", url, lastErr)
+	return lastErr
+}
+
+// StartRescueRequest calls POST /rescue-requests/{requestId}/start
+// Transitions RescueRequest from ASSIGNED → IN_PROGRESS.
+// Called when MissionProgress transitions to EN_ROUTE.
+func (c *RescueRequestClient) StartRescueRequest(ctx context.Context, requestID string) error {
+	url := fmt.Sprintf("%s/v1/rescue-requests/%s/start", c.baseURL, requestID)
+	return c.postRescueCommand(ctx, url, nil)
+}
+
+// ResolveRescueRequest calls POST /rescue-requests/{requestId}/resolve
+// Transitions RescueRequest from IN_PROGRESS → RESOLVED.
+// Called when MissionProgress transitions to RESOLVED.
+func (c *RescueRequestClient) ResolveRescueRequest(ctx context.Context, requestID string) error {
+	url := fmt.Sprintf("%s/v1/rescue-requests/%s/resolve", c.baseURL, requestID)
+	return c.postRescueCommand(ctx, url, nil)
+}
+
+// CancelRescueRequest calls POST /rescue-requests/{requestId}/cancel
+// Transitions RescueRequest to CANCELLED from any non-terminal state.
+// reason is required per the API spec.
+func (c *RescueRequestClient) CancelRescueRequest(ctx context.Context, requestID string, reason string) error {
+	url := fmt.Sprintf("%s/v1/rescue-requests/%s/cancel", c.baseURL, requestID)
+	return c.postRescueCommand(ctx, url, map[string]string{"reason": reason})
 }
 
 // FormatLocation formats the flat location fields from the master record into a human-readable string.
