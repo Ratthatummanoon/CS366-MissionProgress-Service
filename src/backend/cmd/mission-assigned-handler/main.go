@@ -27,6 +27,14 @@ type SNSDispatchMessage struct {
 	Body DispatchBody `json:"body"`
 }
 
+// snsNotification คือ JSON wrapper ที่ SNS ใส่ใน SQS message body
+// เมื่อใช้ SNS → SQS subscription
+type snsNotification struct {
+	Type     string `json:"Type"`
+	Message  string `json:"Message"`
+	TopicArn string `json:"TopicArn"`
+}
+
 // DispatchBody คือ payload ของ DispatchOrderCreated event ตาม Manage Dispatch contract.
 type DispatchBody struct {
 	DispatchID    string `json:"dispatchId"`
@@ -75,11 +83,18 @@ func init() {
 	rescueRequestClient = client.NewRescueRequestClient()
 }
 
-func handler(ctx context.Context, snsEvent events.SNSEvent) error {
-	for _, record := range snsEvent.Records {
-		log.Printf("INFO: Received SNS record from topic=%s", record.SNS.TopicArn)
-		if err := processRecord(ctx, record.SNS.Message); err != nil {
-			log.Printf("ERROR: processing SNS record: %v", err)
+func handler(ctx context.Context, sqsEvent events.SQSEvent) error {
+	for _, record := range sqsEvent.Records {
+		// SQS message body คือ JSON ของ SNS notification (SNS → SQS subscription)
+		// ต้อง unwrap: SQS body → SNS notification → SNS Message → actual payload
+		var notification snsNotification
+		if err := json.Unmarshal([]byte(record.Body), &notification); err != nil {
+			log.Printf("ERROR: unmarshal SQS body as SNS notification: %v", err)
+			return fmt.Errorf("unmarshal SQS body: %w", err)
+		}
+		log.Printf("INFO: Received SQS record from topic=%s", notification.TopicArn)
+		if err := processRecord(ctx, notification.Message); err != nil {
+			log.Printf("ERROR: processing record: %v", err)
 			return err
 		}
 	}
