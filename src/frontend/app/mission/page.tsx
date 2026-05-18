@@ -36,6 +36,7 @@ function MissionDetailContent() {
   const requestId = searchParams.get("id") || "";
   const router = useRouter();
   const { config, isReady } = useConfig();
+  const [hasMounted, setHasMounted] = useState(false);
   const [mission, setMission] = useState<MissionDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,6 +64,10 @@ function MissionDetailContent() {
   const [requestDetail, setRequestDetail] =
     useState<RescueRequestCitizenStatus | null>(null);
   const [requestDetailLoading, setRequestDetailLoading] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isReady) return;
@@ -289,7 +294,7 @@ function MissionDetailContent() {
     }
   }
 
-  if (!isReady || !config) {
+  if (!isReady || !config || !hasMounted) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
