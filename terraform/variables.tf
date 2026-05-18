@@ -36,14 +36,20 @@ variable "rescue_request_service_token" {
   default     = ""
 }
 
-variable "incident_tracking_sqs_arn" {
-  description = "SQS ARN for IncidentTracking Service consumer"
+variable "incident_tracking_lambda_arn" {
+  description = "Lambda ARN for IncidentTracking Service (EventBridge direct target)"
+  type        = string
+  default     = ""
+}
+
+variable "dispatch_sns_topic_arn" {
+  description = "SNS Topic ARN for Manage Dispatch DispatchOrderCreated events (topic: rescue.mission.dispatch.v1)"
   type        = string
   default     = ""
 }
 
 variable "dispatch_sqs_arn" {
-  description = "SQS ARN for Dispatch Management Service consumer"
+  description = "SQS ARN for Manage Dispatch DispatchOrderCreated events (MissionUpdateQueue)"
   type        = string
   default     = ""
 }
@@ -76,6 +82,31 @@ variable "rescue_team_service_token" {
 
 variable "prioritization_sqs_arn" {
   description = "SQS ARN for Prioritization Service consumer"
+  type        = string
+  default     = ""
+}
+
+variable "incident_tracking_receiver_url" {
+  description = "HTTP endpoint URL for IncidentTracking mission-status-receiver (Google Cloud Function)"
+  type        = string
+  default     = ""
+}
+
+variable "incident_tracking_api_key" {
+  description = "API key for IncidentTracking mission-status-receiver endpoint"
+  type        = string
+  sensitive   = true
+  default     = "none"
+}
+
+variable "rescue_request_sqs_arn" {
+  description = "SQS ARN for RescueRequest Service consumer (deprecated — ใช้ rescue_request_event_bus_arn แทน)"
+  type        = string
+  default     = ""
+}
+
+variable "rescue_request_event_bus_arn" {
+  description = "EventBridge custom bus ARN ของ RescueRequest Service (cross-account)"
   type        = string
   default     = ""
 }
