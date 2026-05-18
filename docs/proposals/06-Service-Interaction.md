@@ -64,7 +64,7 @@ graph LR
 
     %% === Demo 2+: EventBridge → Real Services ===
     EB -. "MissionStatusChanged" .-> Incident
-    EB -. "MissionStatusChanged RESOLVED" .-> Dispatch
+    MS -. "PATCH /v1/dispatches/{id}/status (RESOLVED, fire-and-forget)" .-> ManageDispatchOutAPI
     EB -. "MissionBackupRequested + ImpactLevelUpdated" .-> Priority
 
     %% --- Styling ---
@@ -301,13 +301,13 @@ graph LR
 
 ---
 
-## ⑧ DispatchOrderCreated — จาก Dispatch Management Service (Inbound Async) ✅
+## ⑨ DispatchOrderCreated — จาก Dispatch Management Service (Inbound Async via SNS) ✅
 
 | รายละเอียด  | ค่า                                        |
 | :---------- | :----------------------------------------- |
 | **Source**  | Dispatch Management Service                |
 | **Trigger** | เมื่อ Dispatcher มอบหมายภารกิจให้ทีมกู้ภัย |
-| **Channel** | EventBridge                                |
+| **Channel** | SNS (`rescue.mission.dispatch.v1`)         |
 | **Lambda**  | `mission-assigned-handler` (Go)            |
 | **Demo 2**  | ✅ Implemented                             |
 
@@ -315,15 +315,18 @@ graph LR
 
 ```json
 {
-  "source": "dispatch-management-service",
-  "detail-type": "DispatchOrderCreated",
-  "detail": {
+  "header": {
+    "messageType": "DispatchOrderCreated",
+    "traceId": "trace-uuid"
+  },
+  "body": {
     "dispatchId": "DSP-001",
     "requestId": "REQ-001",
     "teamId": "TEAM-ALPHA",
-    "priorityLevel": 2,
-    "status": "ACTIVE",
-    "dispatchedAt": "2025-06-14T08:45:00Z"
+    "priorityLevel": "HIGH",
+    "status": "DISPATCHED",
+    "dispatchedAt": "2025-06-14T08:45:00Z",
+    "timestamp": "2025-06-14T08:45:00Z"
   }
 }
 ```
@@ -394,10 +397,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                           | Demo 1    | Demo 2+             |
-| :-: | :--------------------------- | :--------------------------------- | :--------------------------------------------------- | :-------- | :------------------ |
-| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")      | ✅ Active | ✅ SQS Route Active |
-| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต MD | ✅ Active | ✅ SQS Route Active |
+|  #  | ช่องทาง                      | ทิศทาง                             | รายละเอียด                                           | Demo 1    | Demo 2+                        |
+| :-: | :--------------------------- | :--------------------------------- | :--------------------------------------------------- | :-------- | :----------------------------- |
+| ⑤a  | Async `MissionStatusChanged` | MissionProgress → IncidentTracking | อัปเดตสถานะรวมของ Incident (เช่น "In Progress")      | ✅ Active | ✅ EventBridge Direct (Lambda) |
+| ⑤b  | Async `ImpactLevelUpdated`   | MissionProgress → IncidentTracking | ส่ง Impact Level ล่าสุด → IncidentTracking อัปเดต MD | ✅ Active | ✅ EventBridge Direct (Lambda) |
 
 #### Failure Handling
 
@@ -415,10 +418,10 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
 
 #### การสื่อสาร
 
-|  #  | ช่องทาง                                       | ทิศทาง                     | รายละเอียด                                                                       | Demo 1               | Demo 2+             |
-| :-: | :-------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------- | :------------------- | :------------------ |
-| ④b  | Sync `GET /v1/dispatches?teamId={teamId}`     | MissionProgress → Dispatch | ดึง dispatch status, priority level (ล้มเหลว → Degraded Mode, omit จาก response) | ✅ Active (parallel) | ✅ Active           |
-| ⑤b  | Async `MissionStatusChanged` (Rule: RESOLVED) | MissionProgress → Dispatch | แจ้งว่าภารกิจเสร็จ → ปลดล็อคทีมกู้ภัย (BUSY → AVAILABLE)                         | ✅ Active            | ✅ SQS Route Active |
+|  #  | ช่องทาง                                   | ทิศทาง                     | รายละเอียด                                                                        | Demo 1               | Demo 2+       |
+| :-: | :---------------------------------------- | :------------------------- | :-------------------------------------------------------------------------------- | :------------------- | :------------ |
+| ④b  | Sync `GET /v1/dispatches?teamId={teamId}` | MissionProgress → Dispatch | ดึง dispatch status, priority level (ล้มเหลว → Degraded Mode, omit จาก response)  | ✅ Active (parallel) | ✅ Active     |
+| ⑤b  | Sync `PATCH /v1/dispatches/{id}/status`   | MissionProgress → Dispatch | แจ้งว่าภารกิจ RESOLVED → ปิด Dispatch Order (fire-and-forget, ไม่ block response) | ✅ Active            | ✅ Sync PATCH |
 
 #### Expected API Response (④b Sync GET)
 
@@ -430,26 +433,24 @@ MissionProgress สื่อสารกับ Downstream ผ่าน **2 ช�
       "dispatchId": "DSP-001",
       "requestId": "REQ-001",
       "status": "ACTIVE",
-      "priorityLevel": 2,
+      "priorityLevel": "HIGH",
       "dispatchedAt": "2025-06-14T08:45:00Z"
     }
   ]
 }
 ```
 
-#### EventBridge Rule Filter (⑤b Async)
+#### PATCH Request Body (⑤b Sync PATCH on RESOLVED)
 
 ```json
 {
-  "source": ["MissionProgressService"],
-  "detail-type": ["MissionStatusChanged"],
-  "detail": {
-    "new_status": ["RESOLVED"]
-  }
+  "status": "RESOLVED",
+  "teamId": "TEAM-ALPHA",
+  "note": "Mission completed by MissionProgress Service"
 }
 ```
 
-> _หมายเหตุ: Dispatch ยังเป็น Upstream ด้วย — ส่ง `DispatchOrderCreated` event เข้ามา (⑦) + อาจเรียก GET API (③)_
+> _หมายเหตุ: Dispatch ยังเป็น Upstream ด้วย — ส่ง `DispatchOrderCreated` event เข้ามาผ่าน SNS (⑨) + อาจเรียก GET API (③)_
 
 #### Failure Handling
 
@@ -649,28 +650,28 @@ EventBridge Publish ล้มเหลว
 
 ## Inbound (เข้า MissionProgress)
 
-|  #  | Source        | ช่องทาง     | Endpoint / Event                                      | Demo 1          | Demo 2+    |
-| :-: | :------------ | :---------- | :---------------------------------------------------- | :-------------- | :--------- |
-|  ①  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/progress`                | ✅ curl/Postman | ✅ Web App |
-|  ②  | Rescue Team   | Sync GET    | `GET /missions/{request_id}`                          | ✅              | ✅         |
-|  ③  | Dispatch Mgmt | Sync GET    | `GET /missions/{request_id}`                          | [TBD]           | [TBD]      |
-|  ⑥  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/presigned-url`           | ✅              | ✅         |
-|     | Rescue Team   | Sync GET    | `GET /missions/{request_id}/presigned-url?image_key=` | ✅              | ✅         |
-|  ⑦  | Rescue Team   | Sync GET    | `GET /missions` (header: X-Rescue-Team-ID)            | ✅              | ✅         |
-|  ⑧  | Dispatch Mgmt | Async Event | `DispatchOrderCreated`                                | ✅ Seed Data    | ✅ Live    |
+|  #  | Source        | ช่องทาง     | Endpoint / Event                                              | Demo 1          | Demo 2+    |
+| :-: | :------------ | :---------- | :------------------------------------------------------------ | :-------------- | :--------- |
+|  ①  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/progress`                        | ✅ curl/Postman | ✅ Web App |
+|  ②  | Rescue Team   | Sync GET    | `GET /missions/{request_id}`                                  | ✅              | ✅         |
+|  ③  | Dispatch Mgmt | Sync GET    | `GET /missions/{request_id}`                                  | [TBD]           | [TBD]      |
+|  ⑥  | Rescue Team   | Sync POST   | `POST /missions/{request_id}/presigned-url`                   | ✅              | ✅         |
+|     | Rescue Team   | Sync GET    | `GET /missions/{request_id}/presigned-url?image_key=`         | ✅              | ✅         |
+|  ⑦  | Rescue Team   | Sync GET    | `GET /missions` (header: X-Rescue-Team-ID)                    | ✅              | ✅         |
+|  ⑧  | Dispatch Mgmt | Async (SNS) | `DispatchOrderCreated` (via SNS `rescue.mission.dispatch.v1`) | ✅ Seed Data    | ✅ Live    |
 
 ## Downstream / Outbound (ออกจาก MissionProgress)
 
-|  #  | Destination           | ช่องทาง     | Event / API                                     | Demo 1    | Demo 2+             |
-| :-: | :-------------------- | :---------- | :---------------------------------------------- | :-------- | :------------------ |
-|  ④  | RescueRequest         | Sync GET    | `GET /v1/rescue-requests/{requestId}`           | ✅ Active | ✅ Active           |
-| ④b  | ManageDispatch        | Sync GET    | `GET /v1/dispatches?teamId={teamId}`            | ✅ Active | ✅ Active           |
-| ④c  | RescueTeam            | Sync GET    | `GET /v1/teams/{teamId}`                        | ✅ Active | ✅ Active           |
-| ④d  | RescueTeam            | Sync PATCH  | `PATCH /v1/teams/{teamId}/status` (RESOLVED)    | ✅ Active | ✅ Active           |
-| ⑥b  | Amazon S3             | Sync        | Generate Presigned URL                          | ✅ Active | ✅ Active           |
-| ⑤a  | IncidentTracking      | Async Event | `MissionStatusChanged` + `ImpactLevelUpdated`   | ✅ Active | ✅ SQS Route Active |
-| ⑤b  | Dispatch Mgmt         | Async Event | `MissionStatusChanged` (Rule: RESOLVED)         | ✅ Active | ✅ SQS Route Active |
-| ⑤c  | Rescue Prioritization | Async Event | `MissionBackupRequested` + `ImpactLevelUpdated` | ✅ Active | ✅ SQS Route Active |
+|  #  | Destination           | ช่องทาง     | Event / API                                                    | Demo 1    | Demo 2+                         |
+| :-: | :-------------------- | :---------- | :------------------------------------------------------------- | :-------- | :------------------------------ |
+|  ④  | RescueRequest         | Sync GET    | `GET /v1/rescue-requests/{requestId}`                          | ✅ Active | ✅ Active                       |
+| ④b  | ManageDispatch        | Sync GET    | `GET /v1/dispatches?teamId={teamId}`                           | ✅ Active | ✅ Active                       |
+| ④c  | RescueTeam            | Sync GET    | `GET /v1/teams/{teamId}`                                       | ✅ Active | ✅ Active                       |
+| ④d  | RescueTeam            | Sync PATCH  | `PATCH /v1/teams/{teamId}/status` (RESOLVED)                   | ✅ Active | ✅ Active                       |
+| ⑥b  | Amazon S3             | Sync        | Generate Presigned URL                                         | ✅ Active | ✅ Active                       |
+| ⑤a  | IncidentTracking      | Async Event | `MissionStatusChanged` + `ImpactLevelUpdated`                  | ✅ Active | ✅ EventBridge Direct (Lambda)  |
+| ⑤b  | Dispatch Mgmt         | Sync PATCH  | `PATCH /v1/dispatches/{id}/status` (RESOLVED, fire-and-forget) | ✅ Active | ✅ Sync PATCH (fire-and-forget) |
+| ⑤c  | Rescue Prioritization | Async Event | `MissionBackupRequested` + `ImpactLevelUpdated`                | ✅ Active | ✅ SQS Route Active             |
 
 ## Frontend → S3 Direct (ไม่ผ่าน MissionProgress)
 
@@ -682,13 +683,13 @@ EventBridge Publish ล้มเหลว
 
 ## Downstream Services สรุป (≥2 services ของเพื่อนร่วมชั้น ✅)
 
-|  #  | Service                       | Owner                  | ช่องทาง                | Interaction                                                                  |
-| :-: | :---------------------------- | :--------------------- | :--------------------- | :--------------------------------------------------------------------------- |
-|  1  | RescueRequest Service         | Phattharaphum Kingchai | HTTP GET               | Sync GET (get-mission parallel + mission-assigned-handler)                   |
-|  2  | ManageDispatch Service        | Noppakron Songkroh     | HTTP GET + EventBridge | Sync GET (get-mission) + Async RESOLVED Event + Inbound DispatchOrderCreated |
-|  3  | RescueTeam Service            | กมลพันธ์ กันธายอด      | HTTP GET + PATCH       | Sync GET (get-mission) + PATCH status on RESOLVED                            |
-|  4  | IncidentTracking Service      | Krittamet Damthongkam  | EventBridge            | Async (MissionStatusChanged + ImpactLevelUpdated)                            |
-|  5  | Rescue Prioritization Service | Nattasak Chonmanat     | EventBridge            | Async (MissionBackupRequested + ImpactLevelUpdated)                          |
+|  #  | Service                       | Owner                  | ช่องทาง                     | Interaction                                                                            |
+| :-: | :---------------------------- | :--------------------- | :-------------------------- | :------------------------------------------------------------------------------------- |
+|  1  | RescueRequest Service         | Phattharaphum Kingchai | HTTP GET                    | Sync GET (get-mission parallel + mission-assigned-handler)                             |
+|  2  | ManageDispatch Service        | Noppakron Songkroh     | HTTP GET + SNS + Sync PATCH | Sync GET (get-mission) + Sync PATCH on RESOLVED + Inbound DispatchOrderCreated via SNS |
+|  3  | RescueTeam Service            | กมลพันธ์ กันธายอด      | HTTP GET + PATCH            | Sync GET (get-mission) + PATCH status on RESOLVED                                      |
+|  4  | IncidentTracking Service      | Krittamet Damthongkam  | EventBridge                 | Async (MissionStatusChanged + ImpactLevelUpdated)                                      |
+|  5  | Rescue Prioritization Service | Nattasak Chonmanat     | EventBridge                 | Async (MissionBackupRequested + ImpactLevelUpdated)                                    |
 
 ---
 
