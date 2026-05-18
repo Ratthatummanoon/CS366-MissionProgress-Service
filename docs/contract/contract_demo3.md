@@ -119,21 +119,22 @@ Authorization: Bearer <RESCUE_TEAM_SERVICE_TOKEN>
 }
 ```
 
-### Async Dependencies (EventBridge → SQS)
+### Async Dependencies (EventBridge)
 
-| บริการ               | เจ้าของ               | วิธีเชื่อมต่อ                     | ตัวแปร Terraform            | Degraded Mode            |
-| -------------------- | --------------------- | --------------------------------- | --------------------------- | ------------------------ |
-| IncidentTracking SQS | Krittamet Damthongkam | EventBridge → SQS                 | `incident_tracking_sqs_arn` | CloudWatch Logs fallback |
-| Dispatch SQS         | Noppakron Songkroh    | EventBridge → SQS (RESOLVED only) | `dispatch_sqs_arn`          | CloudWatch Logs fallback |
-| Prioritization SQS   | Nattasak Chonmanat    | EventBridge → SQS                 | `prioritization_sqs_arn`    | CloudWatch Logs fallback |
+| บริการ              | เจ้าของ               | วิธีเชื่อมต่อ                       | ตัวแปร Terraform               | Degraded Mode                  |
+| ------------------- | --------------------- | ----------------------------------- | ------------------------------ | ------------------------------ |
+| IncidentTracking    | Krittamet Damthongkam | EventBridge → Lambda (direct)       | `incident_tracking_lambda_arn` | CloudWatch Logs fallback       |
+| Dispatch (RESOLVED) | Noppakron Songkroh    | Sync PATCH fire-and-forget (no SQS) | `MANAGE_DISPATCH_SERVICE_URL`  | Log WARN + pass (non-blocking) |
+| Prioritization SQS  | Nattasak Chonmanat    | EventBridge → SQS                   | `prioritization_sqs_arn`       | CloudWatch Logs fallback       |
 
-### Inbound Async Event (from Manage Dispatch)
+### Inbound Async Event (from Manage Dispatch via SNS)
 
-| รายการ         | ค่า                           |
-| -------------- | ----------------------------- |
-| Source         | `dispatch-management-service` |
-| Detail-type    | `MissionAssignedEvent`        |
-| Handler Lambda | `mission-assigned-handler`    |
+| รายการ         | ค่า                                                      |
+| -------------- | -------------------------------------------------------- |
+| Channel        | SNS Topic `rescue.mission.dispatch.v1`                   |
+| Topic ARN      | `arn:aws:sns:us-east-1:460581038623:request-dispatch-v1` |
+| messageType    | `DispatchOrderCreated` (in `header.messageType`)         |
+| Handler Lambda | `mission-assigned-handler`                               |
 
 ---
 
@@ -209,7 +210,7 @@ export REQ_ID="REQ-001"    # request_id ที่ได้จาก Manage Dispa
 
 ### บริบท
 
-เมื่อ Manage Dispatch Service มอบหมายภารกิจให้ทีมกู้ภัย → MissionProgress Service จะ**รับ event อัตโนมัติ** ผ่าน Amazon EventBridge โดยไม่ต้องเรียก API ใดๆ
+เมื่อ Manage Dispatch Service มอบหมายภารกิจให้ทีมกู้ภัย → MissionProgress Service จะ**รับ event อัตโนมัติ** ผ่าน Amazon SNS Topic `rescue.mission.dispatch.v1` โดยไม่ต้องเรียก API ใดๆ
 
 ### ทดสอบด้วย seed-data.sh (ถ้ายังไม่ได้รับ event จาก Dispatch จริง)
 
