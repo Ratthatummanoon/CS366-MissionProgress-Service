@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -17,22 +18,40 @@ import (
 	"github.com/Ratthatummanoon/CS366-MissionProgress-Service/internal/repository"
 )
 
-// EventBridgeEvent represents an EventBridge event envelope.
-type EventBridgeEvent struct {
-	Source     string          `json:"source"`
-	DetailType string         `json:"detail-type"`
-	Detail     json.RawMessage `json:"detail"`
+// SNSDispatchMessage คือ envelope ของ SNS message จาก Manage Dispatch Service.
+type SNSDispatchMessage struct {
+	Header struct {
+		MessageType string `json:"messageType"`
+		TraceID     string `json:"traceId"`
+	} `json:"header"`
+	Body DispatchBody `json:"body"`
 }
 
-// MissionAssignedPayload คือ payload จาก DispatchOrderCreated event ของ Manage Dispatch Service
-// field names ใช้ camelCase ตาม Manage Dispatch contract
-type MissionAssignedPayload struct {
+// DispatchBody คือ payload ของ DispatchOrderCreated event ตาม Manage Dispatch contract.
+type DispatchBody struct {
 	DispatchID    string `json:"dispatchId"`
+	Status        string `json:"status"`
 	RequestID     string `json:"requestId"`
 	TeamID        string `json:"teamId"`
-	PriorityLevel int    `json:"priorityLevel"`
-	Status        string `json:"status"`
+	PriorityLevel string `json:"priorityLevel"` // "HIGH", "NORMAL", "LOW", "CRITICAL"
 	DispatchedAt  string `json:"dispatchedAt"`
+	Timestamp     string `json:"timestamp"`
+}
+
+// priorityToInt maps Manage Dispatch priority strings → int (CRITICAL=4, HIGH=3, NORMAL=2, LOW=1).
+func priorityToInt(p string) int {
+	switch p {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "NORMAL", "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
 }
 
 var (
@@ -56,14 +75,32 @@ func init() {
 	rescueRequestClient = client.NewRescueRequestClient()
 }
 
-func handler(ctx context.Context, event EventBridgeEvent) error {
-	log.Printf("INFO: Received event: source=%s, detail-type=%s", event.Source, event.DetailType)
-
-	// 1. Parse payload
-	var payload MissionAssignedPayload
-	if err := json.Unmarshal(event.Detail, &payload); err != nil {
-		return fmt.Errorf("unmarshal MissionAssignedEvent detail: %w", err)
+func handler(ctx context.Context, snsEvent events.SNSEvent) error {
+	for _, record := range snsEvent.Records {
+		log.Printf("INFO: Received SNS record from topic=%s", record.SNS.TopicArn)
+		if err := processRecord(ctx, record.SNS.Message); err != nil {
+			log.Printf("ERROR: processing SNS record: %v", err)
+			return err
+		}
 	}
+	return nil
+}
+
+func processRecord(ctx context.Context, rawMessage string) error {
+	// 1. Parse SNS envelope
+	var msg SNSDispatchMessage
+	if err := json.Unmarshal([]byte(rawMessage), &msg); err != nil {
+		return fmt.Errorf("unmarshal SNS message: %w", err)
+	}
+
+	if msg.Header.MessageType != "DispatchOrderCreated" {
+		log.Printf("INFO: Skipping unknown messageType=%s", msg.Header.MessageType)
+		return nil
+	}
+
+	payload := msg.Body
+	log.Printf("INFO: Received DispatchOrderCreated: dispatchId=%s, requestId=%s, teamId=%s",
+		payload.DispatchID, payload.RequestID, payload.TeamID)
 
 	// 2. Validate required fields
 	if payload.DispatchID == "" || payload.RequestID == "" || payload.TeamID == "" {
@@ -73,11 +110,14 @@ func handler(ctx context.Context, event EventBridgeEvent) error {
 
 	assignedAt := payload.DispatchedAt
 	if assignedAt == "" {
+		assignedAt = payload.Timestamp
+	}
+	if assignedAt == "" {
 		assignedAt = "unknown"
 	}
 
-	// 3. Idempotency check — query by dispatch_id (not by generated mission_id)
-	// EventBridge delivers at-least-once; the same DispatchOrderCreated event may arrive multiple times.
+	// 3. Idempotency check — query by dispatch_id
+	// SNS delivers at-least-once; the same DispatchOrderCreated event may arrive multiple times.
 	existing, err := missionRepo.GetMissionByDispatchID(ctx, payload.DispatchID)
 	if err != nil {
 		log.Printf("ERROR: idempotency check failed for dispatchId=%s: %v", payload.DispatchID, err)
@@ -98,7 +138,7 @@ func handler(ctx context.Context, event EventBridgeEvent) error {
 		log.Printf("WARN: RescueRequestService unavailable for requestId=%s — incidentId will be empty", payload.RequestID)
 	}
 
-	// 5. Generate mission_id ใหม่ (Manage Dispatch ไม่ส่ง mission_id มาให้)
+	// 5. Generate mission_id
 	generatedMissionID := "MISS-" + uuid.New().String()[:8]
 
 	// 6. Create mission record
@@ -108,7 +148,7 @@ func handler(ctx context.Context, event EventBridgeEvent) error {
 		RequestID:         payload.RequestID,
 		IncidentID:        incidentID,
 		RescueTeamID:      payload.TeamID,
-		PriorityLevel:     payload.PriorityLevel,
+		PriorityLevel:     priorityToInt(payload.PriorityLevel),
 		CurrentStatus:     "DISPATCHED",
 		LatestImpactLevel: 0,
 		StartedAt:         assignedAt,
