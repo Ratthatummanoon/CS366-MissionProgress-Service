@@ -2,13 +2,14 @@
 # Lambda: report-progress
 # ---------------------------------------------------
 resource "aws_lambda_function" "report_progress" {
-  function_name = "${var.project_name}-report-progress"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/report-progress.zip"
+  function_name         = "${var.project_name}-report-progress"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 256
+  timeout               = 15 # ลดจาก 30 → 15s เพื่อคืน concurrency slot เร็วขึ้น
+  reserved_concurrent_executions = 1
+  filename              = "${path.module}/build/report-progress.zip"
 
   source_code_hash = fileexists("${path.module}/build/report-progress.zip") ? filebase64sha256("${path.module}/build/report-progress.zip") : null
 
@@ -36,13 +37,14 @@ resource "aws_lambda_function" "report_progress" {
 # Lambda: get-mission
 # ---------------------------------------------------
 resource "aws_lambda_function" "get_mission" {
-  function_name = "${var.project_name}-get-mission"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/get-mission.zip"
+  function_name         = "${var.project_name}-get-mission"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 256
+  timeout               = 10 # ลดจาก 30 → 10s (read-only, ควรเสร็จเร็ว)
+  reserved_concurrent_executions = 1
+  filename              = "${path.module}/build/get-mission.zip"
 
   source_code_hash = fileexists("${path.module}/build/get-mission.zip") ? filebase64sha256("${path.module}/build/get-mission.zip") : null
 
@@ -68,13 +70,14 @@ resource "aws_lambda_function" "get_mission" {
 # Lambda: authorizer
 # ---------------------------------------------------
 resource "aws_lambda_function" "authorizer" {
-  function_name = "${var.project_name}-authorizer"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/authorizer.zip"
+  function_name         = "${var.project_name}-authorizer"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 128 # ลด memory ลง (แค่ validate key ไม่ต้องการ RAM มาก)
+  timeout               = 5   # ลดจาก 30 → 5s (แค่ validate key, cache 300s)
+  reserved_concurrent_executions = 1
+  filename              = "${path.module}/build/authorizer.zip"
 
   source_code_hash = fileexists("${path.module}/build/authorizer.zip") ? filebase64sha256("${path.module}/build/authorizer.zip") : null
 
@@ -120,13 +123,14 @@ resource "aws_lambda_permission" "apigw_authorizer" {
 # Lambda: outbox-processor
 # ---------------------------------------------------
 resource "aws_lambda_function" "outbox_processor" {
-  function_name = "${var.project_name}-outbox-processor"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 60
-  filename      = "${path.module}/build/outbox-processor.zip"
+  function_name         = "${var.project_name}-outbox-processor"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 256
+  timeout               = 55 # ลดจาก 60 → 55s ให้จบก่อน schedule รอบถัดไป (1 min)
+  reserved_concurrent_executions = 1 # ป้องกัน 2 instance รันพร้อมกัน (double-publish)
+  filename              = "${path.module}/build/outbox-processor.zip"
 
   source_code_hash = fileexists("${path.module}/build/outbox-processor.zip") ? filebase64sha256("${path.module}/build/outbox-processor.zip") : null
 
@@ -154,13 +158,14 @@ resource "aws_lambda_permission" "eventbridge_outbox_processor" {
 # Lambda: presigned-url
 # ---------------------------------------------------
 resource "aws_lambda_function" "presigned_url" {
-  function_name = "${var.project_name}-presigned-url"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/presigned-url.zip"
+  function_name         = "${var.project_name}-presigned-url"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 128
+  timeout               = 10 # ลดจาก 30 → 10s (แค่สร้าง presigned URL)
+  reserved_concurrent_executions = 1
+  filename              = "${path.module}/build/presigned-url.zip"
 
   source_code_hash = fileexists("${path.module}/build/presigned-url.zip") ? filebase64sha256("${path.module}/build/presigned-url.zip") : null
 
@@ -188,13 +193,14 @@ resource "aws_lambda_permission" "apigw_presigned_url" {
 # Lambda: list-missions
 # ---------------------------------------------------
 resource "aws_lambda_function" "list_missions" {
-  function_name = "${var.project_name}-list-missions"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/list-missions.zip"
+  function_name                   = "${var.project_name}-list-missions"
+  role                            = local.lab_role_arn
+  handler                         = "bootstrap"
+  runtime                         = "provided.al2023"
+  memory_size                     = 256
+  timeout                         = 10 # ลดจาก 30 → 10s (read-only scan)
+  reserved_concurrent_executions  = 1
+  filename                        = "${path.module}/build/list-missions.zip"
 
   source_code_hash = fileexists("${path.module}/build/list-missions.zip") ? filebase64sha256("${path.module}/build/list-missions.zip") : null
 
@@ -221,13 +227,14 @@ resource "aws_lambda_permission" "apigw_list_missions" {
 # Lambda: mission-assigned-handler
 # ---------------------------------------------------
 resource "aws_lambda_function" "mission_assigned_handler" {
-  function_name = "${var.project_name}-mission-assigned-handler"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 256
-  timeout       = 30
-  filename      = "${path.module}/build/mission-assigned-handler.zip"
+  function_name         = "${var.project_name}-mission-assigned-handler"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 256
+  timeout               = 20 # ลดจาก 30 → 20s (SQS visibility_timeout = 30s ต้องน้อยกว่า)
+  reserved_concurrent_executions = 1 # SQS + batch_size=1 การันตีว่าไม่ burst
+  filename              = "${path.module}/build/mission-assigned-handler.zip"
 
   source_code_hash = fileexists("${path.module}/build/mission-assigned-handler.zip") ? filebase64sha256("${path.module}/build/mission-assigned-handler.zip") : null
 
@@ -245,29 +252,33 @@ resource "aws_lambda_function" "mission_assigned_handler" {
   }
 }
 
-resource "aws_lambda_permission" "sns_mission_assigned_handler" {
-  count         = var.dispatch_sns_topic_arn != "" ? 1 : 0
-  statement_id  = "AllowSNSInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.mission_assigned_handler.function_name
-  principal     = "sns.amazonaws.com"
-  source_arn    = var.dispatch_sns_topic_arn
-}
+# SNS ไม่ trigger Lambda โดยตรงแล้ว (ย้ายไปผ่าน SQS) — permission นี้ไม่จำเป็นอีกต่อไป
+# resource "aws_lambda_permission" "sns_mission_assigned_handler" { ... }
 
-# SQS event source mapping (deprecated — ManageDispatch กลับมาใช้ SNS แล้ว)
-# resource "aws_lambda_event_source_mapping" "dispatch_sqs_trigger" { ... }
+# ---------------------------------------------------
+# SQS Event Source Mapping: mission-dispatch-queue → mission-assigned-handler
+# batch_size=1 ทำให้ Lambda ดึงทีละ 1 message → concurrency ไม่ burst
+# ---------------------------------------------------
+resource "aws_lambda_event_source_mapping" "mission_dispatch_sqs" {
+  count            = var.dispatch_sns_topic_arn != "" ? 1 : 0
+  event_source_arn = aws_sqs_queue.mission_dispatch_queue.arn
+  function_name    = aws_lambda_function.mission_assigned_handler.arn
+  batch_size       = 1
+  enabled          = true
+}
 
 # ---------------------------------------------------
 # Lambda: health-check (no auth — public)
 # ---------------------------------------------------
 resource "aws_lambda_function" "health_check" {
-  function_name = "${var.project_name}-health-check"
-  role          = local.lab_role_arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  memory_size   = 128
-  timeout       = 10
-  filename      = "${path.module}/build/health-check.zip"
+  function_name         = "${var.project_name}-health-check"
+  role                  = local.lab_role_arn
+  handler               = "bootstrap"
+  runtime               = "provided.al2023"
+  memory_size           = 128
+  timeout               = 10
+  reserved_concurrent_executions = 1
+  filename              = "${path.module}/build/health-check.zip"
 
   source_code_hash = fileexists("${path.module}/build/health-check.zip") ? filebase64sha256("${path.module}/build/health-check.zip") : null
 

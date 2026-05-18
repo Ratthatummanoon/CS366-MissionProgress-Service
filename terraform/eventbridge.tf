@@ -192,14 +192,17 @@ resource "aws_cloudwatch_event_target" "outbox_processor_target" {
 }
 
 # ---------------------------------------------------
-# SNS Subscription: ManageDispatch → mission-assigned-handler Lambda
+# SNS Subscription: ManageDispatch → SQS Queue (ไม่ trigger Lambda โดยตรง)
 # Topic: request-dispatch-v1 (ARN: var.dispatch_sns_topic_arn)
+#
+# เปลี่ยนจาก protocol="lambda" → protocol="sqs" เพื่อให้ SQS เป็น buffer
+# ก่อนที่ mission-assigned-handler จะดึงไปประมวลผล ควบคุม concurrency ได้
 # ---------------------------------------------------
 resource "aws_sns_topic_subscription" "dispatch_order_created" {
   count     = var.dispatch_sns_topic_arn != "" ? 1 : 0
   topic_arn = var.dispatch_sns_topic_arn
-  protocol  = "lambda"
-  endpoint  = aws_lambda_function.mission_assigned_handler.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.mission_dispatch_queue.arn
 
   filter_policy = jsonencode({
     messageType = ["DispatchOrderCreated"]
