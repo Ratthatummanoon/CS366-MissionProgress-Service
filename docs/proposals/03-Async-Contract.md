@@ -81,10 +81,10 @@ Event ถูก publish เมื่อมีการเปลี่ยนส�
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter                        | สถานะปัจจุบัน       |
-| ---------------- | ---------------------------------- | ------------------- |
-| IncidentTracking | detail-type = MissionStatusChanged | ✅ SQS Route Active |
-| Dispatch         | + new_status = RESOLVED            | ✅ SQS Route Active |
+| Consumer         | Rule Filter                        | สถานะปัจจุบัน                   |
+| ---------------- | ---------------------------------- | ------------------------------- |
+| IncidentTracking | detail-type = MissionStatusChanged | ✅ EventBridge Direct (Lambda)  |
+| Dispatch         | (sync PATCH on RESOLVED)           | ✅ Sync PATCH (fire-and-forget) |
 
 ---
 
@@ -221,10 +221,10 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ### Consumer Routing
 
-| Consumer         | Rule Filter        | สถานะปัจจุบัน       |
-| ---------------- | ------------------ | ------------------- |
-| IncidentTracking | ImpactLevelUpdated | ✅ SQS Route Active |
-| Prioritization   | ImpactLevelUpdated | ✅ SQS Route Active |
+| Consumer         | Rule Filter        | สถานะปัจจุบัน                  |
+| ---------------- | ------------------ | ------------------------------ |
+| IncidentTracking | ImpactLevelUpdated | ✅ EventBridge Direct (Lambda) |
+| Prioritization   | ImpactLevelUpdated | ✅ SQS Route Active            |
 
 ---
 
@@ -240,14 +240,14 @@ Event เมื่อมีการปรับ Impact Level จากหน้
 
 ### ข้อมูลทั่วไป
 
-| Field             | Value                                                          |
-| ----------------- | -------------------------------------------------------------- |
-| Message Name      | DispatchOrderCreated                                           |
-| Interaction Style | Asynchronous (Subscribe)                                       |
-| Producer          | Manage Dispatch Service                                        |
-| Consumer          | MissionProgress Service (mission-assigned-handler Lambda — Go) |
-| Channel           | EventBridge                                                    |
-| Demo 2            | ✅ Implemented — `mission-assigned-handler` Lambda             |
+| Field             | Value                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| Message Name      | DispatchOrderCreated                                                                          |
+| Interaction Style | Asynchronous (Subscribe)                                                                      |
+| Producer          | Manage Dispatch Service                                                                       |
+| Consumer          | MissionProgress Service (mission-assigned-handler Lambda — Go)                                |
+| Channel           | SNS (`rescue.mission.dispatch.v1` — `arn:aws:sns:us-east-1:460581038623:request-dispatch-v1`) |
+| Demo 2            | ✅ Implemented — `mission-assigned-handler` Lambda                                            |
 
 ---
 
@@ -264,33 +264,40 @@ MissionProgress ฟัง Event นี้จาก Manage Dispatch Service เ�
 
 ---
 
-### Expected Payload (จาก Manage Dispatch Service)
+### Expected Payload (จาก Manage Dispatch Service via SNS)
+
+Manage Dispatch ส่ง message มาผ่าน SNS Topic `rescue.mission.dispatch.v1` ด้วย envelope ดังนี้:
 
 ```json
 {
-  "source": "dispatch-management-service",
-  "detail-type": "DispatchOrderCreated",
-  "detail": {
+  "header": {
+    "messageType": "DispatchOrderCreated",
+    "traceId": "trace-uuid"
+  },
+  "body": {
     "dispatchId": "DSP-001",
     "requestId": "REQ-001",
     "teamId": "TEAM-ALPHA",
-    "priorityLevel": 2,
-    "status": "ACTIVE",
-    "dispatchedAt": "2025-06-14T08:45:00Z"
+    "priorityLevel": "HIGH",
+    "status": "DISPATCHED",
+    "dispatchedAt": "2025-06-14T08:45:00Z",
+    "timestamp": "2025-06-14T08:45:00Z"
   }
 }
 ```
 
 ### Field Definition
 
-| Field                | Type    | Required | Description                           |
-| -------------------- | ------- | -------- | ------------------------------------- |
-| detail.dispatchId    | String  | ✅       | รหัส Dispatch Order (idempotency key) |
-| detail.requestId     | String  | ✅       | รหัส request จาก RescueRequest        |
-| detail.teamId        | String  | ✅       | รหัสทีมกู้ภัย                         |
-| detail.priorityLevel | Integer | ❌       | ลำดับความสำคัญ                        |
-| detail.status        | String  | ❌       | สถานะ Dispatch Order                  |
-| detail.dispatchedAt  | String  | ❌       | เวลาที่มอบหมาย (ISO 8601)             |
+| Field              | Type   | Required | Description                                           |
+| ------------------ | ------ | -------- | ----------------------------------------------------- |
+| header.messageType | String | ✅       | ต้องเป็น `"DispatchOrderCreated"` (filter ใน handler) |
+| header.traceId     | String | ❌       | สำหรับ distributed tracing                            |
+| body.dispatchId    | String | ✅       | รหัส Dispatch Order (idempotency key)                 |
+| body.requestId     | String | ✅       | รหัส request จาก RescueRequest                        |
+| body.teamId        | String | ✅       | รหัสทีมกู้ภัย                                         |
+| body.priorityLevel | String | ❌       | `"CRITICAL"` / `"HIGH"` / `"NORMAL"` / `"LOW"`        |
+| body.status        | String | ❌       | สถานะ Dispatch Order                                  |
+| body.dispatchedAt  | String | ❌       | เวลาที่มอบหมาย (ISO 8601)                             |
 
 ### Failure Handling
 
@@ -298,4 +305,5 @@ MissionProgress ฟัง Event นี้จาก Manage Dispatch Service เ�
 | ----------------------- | ----------------------------------------------------- |
 | Duplicate event         | Idempotency check → skip (ไม่ error)                  |
 | RescueRequest ล่ม       | Degraded Mode → `incident_id = ""` (ยังสร้าง mission) |
-| Missing required fields | Return error → EventBridge retry                      |
+| Missing required fields | Return error → SNS retry                              |
+| Unknown messageType     | Log + skip (ไม่ error)                                |
