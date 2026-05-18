@@ -216,11 +216,11 @@ graph TD
 
 ### Events
 
-| Event                  | Trigger                 | สถานะปัจจุบัน                                           |
-| ---------------------- | ----------------------- | ------------------------------------------------------- |
-| MissionStatusChanged   | ทุกครั้งที่สถานะเปลี่ยน | ✅ SQS Route Active (IncidentTracking + Dispatch)       |
-| MissionBackupRequested | NEED_BACKUP             | ✅ SQS Route Active (Prioritization)                    |
-| ImpactLevelUpdated     | มี new_impact_level     | ✅ SQS Route Active (IncidentTracking + Prioritization) |
+| Event                  | Trigger                 | สถานะปัจจุบัน                                                         |
+| ---------------------- | ----------------------- | --------------------------------------------------------------------- |
+| MissionStatusChanged   | ทุกครั้งที่สถานะเปลี่ยน | ✅ Active (IncidentTracking: EventBridge Direct; Dispatch: SQS)       |
+| MissionBackupRequested | NEED_BACKUP             | ✅ SQS Route Active (Prioritization)                                  |
+| ImpactLevelUpdated     | มี new_impact_level     | ✅ Active (IncidentTracking: EventBridge Direct; Prioritization: SQS) |
 
 ---
 
