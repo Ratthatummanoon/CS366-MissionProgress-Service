@@ -14,12 +14,16 @@ resource "aws_lambda_function" "report_progress" {
 
   environment {
     variables = {
-      TABLE_MISSION             = aws_dynamodb_table.mission_assignment.name
-      TABLE_TIMELINE            = aws_dynamodb_table.mission_timeline.name
-      TABLE_OUTBOX              = aws_dynamodb_table.event_outbox.name
-      EVENT_BUS_NAME            = aws_cloudwatch_event_bus.mission_events.name
-      RESCUE_TEAM_SERVICE_URL   = var.rescue_team_service_url
-      RESCUE_TEAM_SERVICE_TOKEN = var.rescue_team_service_token
+      TABLE_MISSION                 = aws_dynamodb_table.mission_assignment.name
+      TABLE_TIMELINE                = aws_dynamodb_table.mission_timeline.name
+      TABLE_OUTBOX                  = aws_dynamodb_table.event_outbox.name
+      EVENT_BUS_NAME                = aws_cloudwatch_event_bus.mission_events.name
+      RESCUE_TEAM_SERVICE_URL       = var.rescue_team_service_url
+      RESCUE_TEAM_SERVICE_TOKEN     = var.rescue_team_service_token
+      MANAGE_DISPATCH_SERVICE_URL   = var.manage_dispatch_service_url
+      MANAGE_DISPATCH_SERVICE_TOKEN = var.manage_dispatch_service_token
+      RESCUE_REQUEST_SERVICE_URL    = var.rescue_request_service_url
+      RESCUE_REQUEST_SERVICE_TOKEN  = var.rescue_request_service_token
     }
   }
 
@@ -241,13 +245,17 @@ resource "aws_lambda_function" "mission_assigned_handler" {
   }
 }
 
-resource "aws_lambda_permission" "eventbridge_mission_assigned_handler" {
-  statement_id  = "AllowEventBridgeInvoke"
+resource "aws_lambda_permission" "sns_mission_assigned_handler" {
+  count         = var.dispatch_sns_topic_arn != "" ? 1 : 0
+  statement_id  = "AllowSNSInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.mission_assigned_handler.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.mission_assigned.arn
+  principal     = "sns.amazonaws.com"
+  source_arn    = var.dispatch_sns_topic_arn
 }
+
+# SQS event source mapping (deprecated — ManageDispatch กลับมาใช้ SNS แล้ว)
+# resource "aws_lambda_event_source_mapping" "dispatch_sqs_trigger" { ... }
 
 # ---------------------------------------------------
 # Lambda: health-check (no auth — public)
