@@ -65,6 +65,37 @@ resource "aws_cloudwatch_event_target" "mission_status_changed_log" {
 }
 
 # ---------------------------------------------------
+# API Destination: IncidentTracking → mission-status-receiver
+# ---------------------------------------------------
+resource "aws_cloudwatch_event_connection" "incident_tracking" {
+  name               = "incident-tracking-connection"
+  authorization_type = "API_KEY"
+
+  auth_parameters {
+    api_key {
+      key   = "x-api-key"
+      value = var.incident_tracking_api_key
+    }
+  }
+}
+
+resource "aws_cloudwatch_event_api_destination" "incident_tracking" {
+  name                             = "incident-tracking-mission-status-receiver"
+  connection_arn                   = aws_cloudwatch_event_connection.incident_tracking.arn
+  invocation_endpoint              = var.incident_tracking_receiver_url
+  http_method                      = "POST"
+  invocation_rate_limit_per_second = 20
+}
+
+resource "aws_cloudwatch_event_target" "mission_status_changed_incident_tracking" {
+  rule           = aws_cloudwatch_event_rule.mission_status_changed.name
+  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
+  target_id      = "mission-status-changed-incident-tracking"
+  arn            = aws_cloudwatch_event_api_destination.incident_tracking.arn
+  role_arn       = local.lab_role_arn
+}
+
+# ---------------------------------------------------
 # Rule: MissionBackupRequested → CloudWatch Log
 # ---------------------------------------------------
 resource "aws_cloudwatch_event_rule" "backup_requested" {
@@ -161,67 +192,57 @@ resource "aws_cloudwatch_event_target" "outbox_processor_target" {
 }
 
 # ---------------------------------------------------
-# Rule: MissionAssignedEvent from Dispatch → mission-assigned-handler
+# SNS Subscription: ManageDispatch → mission-assigned-handler Lambda
+# Topic: request-dispatch-v1 (ARN: var.dispatch_sns_topic_arn)
 # ---------------------------------------------------
-resource "aws_cloudwatch_event_rule" "mission_assigned" {
-  name        = "mission-assigned-rule"
-  description = "Capture DispatchOrderCreated from Manage Dispatch Service"
+resource "aws_sns_topic_subscription" "dispatch_order_created" {
+  count     = var.dispatch_sns_topic_arn != "" ? 1 : 0
+  topic_arn = var.dispatch_sns_topic_arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.mission_assigned_handler.arn
 
-  event_pattern = jsonencode({
-    source      = ["ManageDispatchService"]
-    detail-type = ["DispatchOrderCreated"]
+  filter_policy = jsonencode({
+    messageType = ["DispatchOrderCreated"]
   })
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_cloudwatch_event_target" "mission_assigned_handler" {
-  rule      = aws_cloudwatch_event_rule.mission_assigned.name
-  target_id = "mission-assigned-handler-lambda"
-  arn       = aws_lambda_function.mission_assigned_handler.arn
 }
 
 # ---------------------------------------------------
-# SQS Targets: MissionStatusChanged → IncidentTracking
+# Lambda Target: MissionStatusChanged → IncidentTracking (direct)
 # ---------------------------------------------------
-resource "aws_cloudwatch_event_target" "mission_status_changed_incident_sqs" {
-  count          = var.incident_tracking_sqs_arn != "" ? 1 : 0
+resource "aws_cloudwatch_event_target" "mission_status_changed_incident_lambda" {
+  count          = var.incident_tracking_lambda_arn != "" ? 1 : 0
   rule           = aws_cloudwatch_event_rule.mission_status_changed.name
   event_bus_name = aws_cloudwatch_event_bus.mission_events.name
-  target_id      = "mission-status-changed-incident-sqs"
-  arn            = var.incident_tracking_sqs_arn
+  target_id      = "mission-status-changed-incident-lambda"
+  arn            = var.incident_tracking_lambda_arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_incident_status_changed" {
+  count         = var.incident_tracking_lambda_arn != "" ? 1 : 0
+  statement_id  = "AllowEventBridgeIncidentStatusChanged"
+  action        = "lambda:InvokeFunction"
+  function_name = var.incident_tracking_lambda_arn
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.mission_status_changed.arn
 }
 
 # ---------------------------------------------------
-# Rule: MissionStatusChanged (RESOLVED only) → Dispatch SQS
+# NOTE: Dispatch RESOLVED path — now uses sync PATCH (no SQS/EventBridge routing needed)
 # ---------------------------------------------------
-resource "aws_cloudwatch_event_rule" "mission_resolved_dispatch" {
-  count          = var.dispatch_sqs_arn != "" ? 1 : 0
-  name           = "mission-resolved-dispatch-rule"
+
+# ---------------------------------------------------
+# SQS Target: MissionStatusChanged → RescueRequest
+# ---------------------------------------------------
+# SQS target (deprecated — RescueRequest เปลี่ยนเป็น EventBridge cross-account bus)
+# resource "aws_cloudwatch_event_target" "mission_status_changed_rescue_request_sqs" { ... }
+
+resource "aws_cloudwatch_event_target" "mission_status_changed_rescue_request_bus" {
+  count          = var.rescue_request_event_bus_arn != "" ? 1 : 0
+  rule           = aws_cloudwatch_event_rule.mission_status_changed.name
   event_bus_name = aws_cloudwatch_event_bus.mission_events.name
-  description    = "Route RESOLVED status to Dispatch service"
-
-  event_pattern = jsonencode({
-    source      = ["MissionProgressService"]
-    detail-type = ["MissionStatusChanged"]
-    detail = {
-      new_status = ["RESOLVED"]
-    }
-  })
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_cloudwatch_event_target" "mission_resolved_dispatch_sqs" {
-  count          = var.dispatch_sqs_arn != "" ? 1 : 0
-  rule           = aws_cloudwatch_event_rule.mission_resolved_dispatch[0].name
-  event_bus_name = aws_cloudwatch_event_bus.mission_events.name
-  target_id      = "mission-resolved-dispatch-sqs"
-  arn            = var.dispatch_sqs_arn
+  target_id      = "mission-status-changed-rescue-request-bus"
+  arn            = var.rescue_request_event_bus_arn
+  role_arn       = local.lab_role_arn
 }
 
 # ---------------------------------------------------
@@ -236,14 +257,23 @@ resource "aws_cloudwatch_event_target" "backup_requested_prioritization_sqs" {
 }
 
 # ---------------------------------------------------
-# SQS Targets: ImpactLevelUpdated → IncidentTracking + Prioritization
+# Lambda Targets: ImpactLevelUpdated → IncidentTracking (direct) + Prioritization (SQS)
 # ---------------------------------------------------
-resource "aws_cloudwatch_event_target" "impact_level_updated_incident_sqs" {
-  count          = var.incident_tracking_sqs_arn != "" ? 1 : 0
+resource "aws_cloudwatch_event_target" "impact_level_updated_incident_lambda" {
+  count          = var.incident_tracking_lambda_arn != "" ? 1 : 0
   rule           = aws_cloudwatch_event_rule.impact_level_updated.name
   event_bus_name = aws_cloudwatch_event_bus.mission_events.name
-  target_id      = "impact-level-updated-incident-sqs"
-  arn            = var.incident_tracking_sqs_arn
+  target_id      = "impact-level-updated-incident-lambda"
+  arn            = var.incident_tracking_lambda_arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_incident_impact_updated" {
+  count         = var.incident_tracking_lambda_arn != "" ? 1 : 0
+  statement_id  = "AllowEventBridgeIncidentImpactUpdated"
+  action        = "lambda:InvokeFunction"
+  function_name = var.incident_tracking_lambda_arn
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.impact_level_updated.arn
 }
 
 resource "aws_cloudwatch_event_target" "impact_level_updated_prioritization_sqs" {
@@ -255,8 +285,11 @@ resource "aws_cloudwatch_event_target" "impact_level_updated_prioritization_sqs"
 }
 
 # ---------------------------------------------------
-# NOTE: SQS Resource Policies
-# Consumer teams must add EventBridge permission on their SQS queues:
+# NOTE: Lambda & SQS Resource Policies
+# IncidentTracking: EventBridge invokes Lambda directly
+#   → aws_lambda_permission managed above (AllowEventBridgeIncident*)
+# Dispatch / Prioritization / RescueRequest: use SQS — teams must add EventBridge permission on their queue:
 #   Principal: events.amazonaws.com
 #   Action: sqs:SendMessage
+#   Source ARN: aws_cloudwatch_event_rule.mission_status_changed.arn (for RescueRequest)
 # ---------------------------------------------------
