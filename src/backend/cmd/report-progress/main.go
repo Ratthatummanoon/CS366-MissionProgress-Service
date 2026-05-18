@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -26,10 +27,12 @@ import (
 )
 
 var (
-	missionRepo      *repository.MissionRepo
-	timelineRepo     *repository.TimelineRepo
-	publisher        *evtpub.Publisher
-	rescueTeamClient *client.RescueTeamClient
+	missionRepo          *repository.MissionRepo
+	timelineRepo         *repository.TimelineRepo
+	publisher            *evtpub.Publisher
+	rescueTeamClient     *client.RescueTeamClient
+	manageDispatchClient  *client.ManageDispatchClient
+	rescueRequestClient  *client.RescueRequestClient
 )
 
 func init() {
@@ -50,6 +53,8 @@ func init() {
 	outboxRepo := repository.NewOutboxRepo(ddbClient, tableOutbox)
 	publisher = evtpub.NewPublisher(ebClient, outboxRepo)
 	rescueTeamClient = client.NewRescueTeamClient()
+	manageDispatchClient = client.NewManageDispatchClient()
+	rescueRequestClient = client.NewRescueRequestClient()
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -139,6 +144,8 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	}
 
 	// 8. Publish events (non-blocking with outbox fallback)
+	log.Printf("INFO: Publishing MissionStatusChanged: missionId=%s requestId=%s incidentId=%s rescueTeamId=%s oldStatus=%s newStatus=%s changedBy=%s changedAt=%s",
+		mission.MissionID, mission.RequestID, mission.IncidentID, mission.RescueTeamID, oldStatus, req.Status, rescueTeamID, now)
 	publisher.PublishMissionStatusChanged(ctx, models.MissionStatusChangedEvent{
 		SchemaVersion: "1.0",
 		MissionID:     mission.MissionID,
@@ -176,11 +183,30 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 		})
 	}
 
-	// 8b. Notify RescueTeam Service ให้ free team กลับเป็น AVAILABLE เมื่อ RESOLVED
-	// Fire-and-forget goroutine: ไม่บล็อค response path (BUG-03)
+	// 8b–8e. Notify downstream services — รัน concurrent แต่รอให้ครบก่อน return
+	// Lambda freeze process ทันทีหลัง handler return, goroutine ที่ยังไม่เสร็จจะถูกตัด
+	var wg sync.WaitGroup
+
+	// 8b. RescueRequest /start เมื่อ EN_ROUTE (ASSIGNED → IN_PROGRESS)
+	if req.Status == "EN_ROUTE" && mission.RequestID != "" {
+		reqID := mission.RequestID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := rescueRequestClient.StartRescueRequest(context.Background(), reqID); err != nil {
+				log.Printf("WARN: failed to call RescueRequest /start for requestId=%s: %v", reqID, err)
+			} else {
+				log.Printf("INFO: RescueRequest requestId=%s transitioned to IN_PROGRESS via /start", reqID)
+			}
+		}()
+	}
+
+	// 8c. RescueTeam → AVAILABLE เมื่อ RESOLVED
 	if req.Status == "RESOLVED" && mission.RescueTeamID != "" {
 		teamID := mission.RescueTeamID
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			if err := rescueTeamClient.UpdateTeamStatus(context.Background(), teamID, "AVAILABLE"); err != nil {
 				log.Printf("WARN: failed to update RescueTeam status to AVAILABLE for team=%s: %v", teamID, err)
 			} else {
@@ -188,6 +214,37 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 			}
 		}()
 	}
+
+	// 8d. RescueRequest /resolve เมื่อ RESOLVED (IN_PROGRESS → RESOLVED)
+	if req.Status == "RESOLVED" && mission.RequestID != "" {
+		reqID := mission.RequestID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := rescueRequestClient.ResolveRescueRequest(context.Background(), reqID); err != nil {
+				log.Printf("WARN: failed to call RescueRequest /resolve for requestId=%s: %v", reqID, err)
+			} else {
+				log.Printf("INFO: RescueRequest requestId=%s transitioned to RESOLVED via /resolve", reqID)
+			}
+		}()
+	}
+
+	// 8e. ManageDispatch → RESOLVED
+	if req.Status == "RESOLVED" && mission.DispatchID != "" {
+		dispatchID := mission.DispatchID
+		teamID := mission.RescueTeamID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := manageDispatchClient.UpdateDispatchStatus(context.Background(), dispatchID, "RESOLVED", teamID); err != nil {
+				log.Printf("WARN: failed to update ManageDispatch status to RESOLVED for dispatch=%s: %v", dispatchID, err)
+			} else {
+				log.Printf("INFO: ManageDispatch dispatch=%s closed as RESOLVED", dispatchID)
+			}
+		}()
+	}
+
+	wg.Wait()
 
 	// 9. Return success response
 	return response.JSON(200, models.ReportProgressResponse{
